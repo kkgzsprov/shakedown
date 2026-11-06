@@ -234,6 +234,53 @@ class BudgetTests(unittest.TestCase):
                 sleep.assert_not_called()
         self.assertEqual(ledger.snapshot()["attempts"], [])
 
+    def test_transient_windows_replace_denial_keeps_lock_and_one_reservation(self):
+        ledger = BudgetLedger(self.path, 1)
+        original_replace = Path.replace
+        sources = []
+        def replacing(source, target):
+            self.assertEqual(target, ledger.path)
+            self.assertTrue(ledger.lock_path.is_file())
+            self.assertEqual(len(json.loads(source.read_text())["attempts"]), 1)
+            sources.append(source)
+            if len(sources) == 1:
+                raise PermissionError(errno.EACCES, "replacement denied")
+            return original_replace(source, target)
+        with patch("shakedown.planner.budget.os.name", "nt"), \
+                patch("shakedown.planner.budget.Path.replace", autospec=True, side_effect=replacing), \
+                patch("shakedown.planner.budget.time.sleep") as sleep:
+            ledger.reserve("one", .1)
+        self.assertEqual(len(sources), 2)
+        self.assertEqual(sources[0], sources[1])
+        sleep.assert_called_once_with(.01)
+        self.assertEqual(len(ledger.snapshot()["attempts"]), 1)
+        self.assertEqual(Decimal(ledger.remaining()), Decimal(".9"))
+
+    def test_permanent_windows_replace_denial_preserves_ledger_and_cleans_owned_files(self):
+        ledger = BudgetLedger(self.path, 1)
+        before = self.path.read_bytes()
+        denied = PermissionError(errno.EACCES, "replacement denied")
+        with patch("shakedown.planner.budget.os.name", "nt"), \
+                patch("shakedown.planner.budget.Path.replace", side_effect=denied), \
+                patch("shakedown.planner.budget.time.monotonic", side_effect=[0, 0, 3]):
+            with self.assertRaisesRegex(BudgetError, "atomic replacement") as captured:
+                ledger.reserve("denied", .1)
+        self.assertIs(captured.exception.__cause__, denied)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertFalse(ledger.lock_path.exists())
+        self.assertEqual(list(self.root.glob("*.tmp")), [])
+
+    def test_posix_replace_denial_is_not_retried(self):
+        ledger = BudgetLedger(self.path, 1)
+        before = self.path.read_bytes()
+        with patch("shakedown.planner.budget.os.name", "posix"), \
+                patch("shakedown.planner.budget.Path.replace", side_effect=PermissionError(errno.EACCES, "denied")), \
+                patch("shakedown.planner.budget.time.sleep") as sleep:
+            with self.assertRaises(PermissionError):
+                ledger.reserve("denied", .1)
+        sleep.assert_not_called()
+        self.assertEqual(self.path.read_bytes(), before)
+
     def test_threads_cannot_overreserve_one_shared_ledger(self):
         ledger = BudgetLedger(self.path, .5, 10)
 

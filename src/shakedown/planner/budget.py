@@ -115,7 +115,18 @@ class BudgetLedger:
                 stream.write(canonical_json(state) + b"\n")
                 stream.flush()
                 os.fsync(stream.fileno())
-            temporary.replace(self.path)
+            deadline = time.monotonic() + 2
+            while True:
+                try:
+                    temporary.replace(self.path)
+                    break
+                except PermissionError as error:
+                    if os.name != "nt" or error.errno != errno.EACCES:
+                        raise
+                    if time.monotonic() >= deadline:
+                        raise BudgetError("budget ledger atomic replacement is unavailable") from error
+                    # Keep the exclusive lock and retry the same fsynced bytes.
+                    time.sleep(.01)
         finally:
             if temporary.exists():
                 temporary.unlink()
