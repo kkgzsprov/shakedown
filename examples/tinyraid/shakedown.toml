@@ -1,0 +1,28 @@
+[game]
+cwd = "../.."
+command = ["{python}", "-m", "examples.tinyraid", "--headless", "--seed", "{seed}", "--map", "{map}", "--duration", "{seconds}", "--telemetry", "{run_dir}/telemetry.jsonl", "--record-inputs", "{run_dir}/inputs.json", "--decider", "{decider_mode}", "--profile-name", "{profile}", "--tuning", "{tuning_file}"]
+replay_command = ["{python}", "-m", "examples.tinyraid", "--replay-inputs", "{inputs_file}", "--telemetry", "{run_dir}/telemetry.jsonl"]
+maps = ["yard", "warehouse"]
+profiles = ["cautious", "aggressive", "looter"]
+
+[batch]
+seeds = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+deciders = ["rule"]
+seconds = 12
+workers = 2
+wall_timeout_s = 30
+bootstrap_samples = 1000
+bootstrap_seed = 0
+
+[decider]
+backend = "rule"
+budget_usd = 0.0
+
+[tuning]
+keys = "tuning_keys.json"
+candidates = [{}]
+
+[checks]
+oracle_args = ["--scenario", "stuck"]
+oracle_seconds = 14
+visibility_command = ["{python}", "-m", "examples.tinyraid.checks"]

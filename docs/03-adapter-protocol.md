@@ -2,7 +2,7 @@
 
 # 3. Adapter and wire protocol
 
-The adapter is the game-side half of Shakedown. It must live in the game because only the game can pause its own clock, compute what is legal, and inject input through the player's input path. Shakedown supplies the protocol and a reference adapter (chapter 8). The generic conformance checker (M2) and agent skill (M6) are planned.
+The adapter is the game-side half of Shakedown. It must live in the game because only the game can pause its own clock, compute what is legal, and inject input through the player's input path. Shakedown supplies the protocol and a reference adapter (chapter 8). M2 supplies the generic conformance checker; the agent skill (M6) remains planned.
 
 ## 3.1 Responsibilities
 
@@ -170,7 +170,7 @@ Tinyraid uses code 3 for input replay assertion failures and code 2 for malforme
 
 ## 3.10 Conformance checks
 
-The planned M2 command `shakedown check-adapter` will run these checks against a new adapter. M1 implements C1 to C6 against tinyraid in `tests/test_tinyraid.py`, plus a game-specific C7 wall-visibility fixture. Run them with `python -m unittest tests.test_tinyraid -v` from the repository root. C1 to C3 also passed in the earlier prototype (section 1.5).
+M2's `shakedown check-adapter --config <file> --output <new-directory>` runs C1–C7 against the configured game and writes `conformance.json` with a verdict and evidence paths for every check. The tinyraid configuration includes all required fixtures. M1's direct game tests remain in `tests/test_tinyraid.py`; C1–C3 also passed in the earlier prototype (section 1.5).
 
 | Check | Pass condition |
 |---|---|
@@ -181,5 +181,7 @@ The planned M2 command `shakedown check-adapter` will run these checks against a
 | C5 Divergence | A tampered tape exits with code 5 |
 | C6 Oracle | A forced stuck state exits with code 4 and leaves an `inputs.json` that reproduces it |
 | C7 No leak | An entity behind a wall never appears in `seen` (game-specific fixture, the agent skill writes a template) |
+
+Each check is `passed`, `failed`, or `unmeasured`. The overall verdict passes only when all seven pass. Without `game.replay_command`, input replay is unmeasured. C6 needs `checks.oracle_args` and enough `checks.oracle_seconds` to trigger the forced stuck fixture; `checks.oracle_kind` names the expected oracle (default `stuck`). A different oracle firing first is a failure, even if its input replay matches. C7 uses the game-owned `checks.visibility_command`, which must exit successfully and emit a JSON object with `passed: true`; a zero exit alone is insufficient. Missing game-specific fixtures are unmeasured. C4 separately injects a bad sequence, unknown choice, and broken JSON into real decision requests and requires immediate contract rejection.
 
 C1 to C3 all passing is the definition of "this game is supported." When C1 fails, the usual cause is work that finishes on wall-clock time: asynchronous asset loads, budgets measured in milliseconds, background threads. Waiting for a hosted decider gives that work extra wall time it would not get in a fast tape run. The fix is a sync point that completes such work on simulation steps before the next step runs.

@@ -4,7 +4,7 @@
 
 ## 2.1 Process model
 
-The diagram is the full design. M1 supplies the game/adapter, local deciders, bridge, and replay; the orchestrator, planner, and later stages are not implemented yet.
+The diagram is the full design. M0–M2 supply the game/adapter, offline deciders, bridge, replay, isolated batch workers, aggregation, and conformance checks. The planner, exploration, triage, and later stages remain planned.
 
 ```text
  human: approves goals, campaigns, and any default change
@@ -49,7 +49,7 @@ One bridge process serves one game process. The orchestrator starts N pairs in p
 
 The Python side uses only the standard library (`json`, `subprocess`, `urllib`, `hashlib`, `concurrent.futures`, `random`, `statistics`). The prototype held to this rule, and it keeps installation to one `pip install`. An optional dependency such as Optuna would come only behind an extra and a separate decision. The minimum version is Python 3.11, the first release with `tomllib` for reading `shakedown.toml`. CI runs the tests, including a fixed request-hash value, on 3.11, 3.12 and 3.13.
 
-## 2.3 Repository layout (planned)
+## 2.3 Repository layout (implemented and planned)
 
 ```text
 shakedown/
@@ -58,19 +58,22 @@ shakedown/
   docs/ko/              Korean translations, same file names
   src/shakedown/
     protocol.py         wire format, request hashing, version checks
+    config.py           validated TOML and argument templates
+    processes.py        bounded child processes and cancellation
+    windows_job.py      Windows descendant containment
     bridge.py           one game process ↔ one decider
-    deciders/           random.py, mock.py, tape.py, jev.py
-    planner/            claude_cli.py, codex_cli.py, mock.py, schemas/
+    deciders/           random.py, mock.py, tape.py; jev.py planned
+    planner/            planned: CLI backends and schemas
     orchestrate.py      batches → runs → workers
     aggregate.py        metrics.json
-    explore.py          QA sampling
-    anomalies.py        anomalies.md
-    triage.py           findings/
-    optimize.py         tuning search
-    campaign.py         the planner ↔ optimizer loop with approval gates
+    explore.py (planned)          QA sampling
+    anomalies.py (planned)        anomalies.md
+    triage.py (planned)           findings/
+    optimize.py (planned)         tuning search
+    campaign.py (planned)         the planner ↔ optimizer loop with approval gates
     conformance.py      adapter conformance checks (section 3.10)
-    cli.py              `shakedown bridge | run | explore | triage | campaign | check-adapter | bench`
-  skill/shakedown/      SKILL.md and helper scripts for coding agents
+    cli.py              `shakedown bridge | run | check-adapter`
+  skill/shakedown/      planned agent skill and helper scripts
   examples/tinyraid/    reference game and adapter (chapter 8)
   tests/
 ```
@@ -79,33 +82,46 @@ Each file name maps to one stage of the pipeline above. The prototype's tools ha
 
 ## 2.4 Configuration
 
-A project describes its game in `shakedown.toml`. The game's own flag names vary, so Shakedown never hard-codes them. It fills a command template instead.
+A project describes its game in `shakedown.toml`. M2 loads it with `tomllib`, validates types and tuning bounds, then expands argument arrays without a shell. The following is the runnable `examples/tinyraid/shakedown.toml` configuration:
 
 ```toml
 [game]
-command = ["{exe}", "--headless", "--seed", "{seed}", "--map", "{map}",
-           "--duration", "{seconds}", "--telemetry", "{run_dir}/telemetry.jsonl",
-           "--record-inputs", "{run_dir}/inputs.json", "--decider", "{decider_mode}",
-           "--profile-name", "{profile}", "--tuning", "{tuning_file}"]
-replay_command = ["{exe}", "--headless", "--seed", "{seed}", "--map", "{map}",
-                  "--replay-inputs", "{inputs_file}", "--telemetry", "{run_dir}/telemetry.jsonl"]
-exe = "build/mygame"
+cwd = "../.."
+command = ["{python}", "-m", "examples.tinyraid", "--headless", "--seed", "{seed}", "--map", "{map}", "--duration", "{seconds}", "--telemetry", "{run_dir}/telemetry.jsonl", "--record-inputs", "{run_dir}/inputs.json", "--decider", "{decider_mode}", "--profile-name", "{profile}", "--tuning", "{tuning_file}"]
+replay_command = ["{python}", "-m", "examples.tinyraid", "--replay-inputs", "{inputs_file}", "--telemetry", "{run_dir}/telemetry.jsonl"]
 maps = ["yard", "warehouse"]
 profiles = ["cautious", "aggressive", "looter"]
 
-[decider]
-backend = "random"        # random | mock | tape | jev
-budget_usd = 0.0
+[batch]
+seeds = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+deciders = ["rule"]
+seconds = 12
+workers = 2
+wall_timeout_s = 30
+bootstrap_samples = 1000
+bootstrap_seed = 0
 
-[planner]
-backend = "mock"          # mock | claude-cli | codex-cli
+[decider]
+backend = "rule"
 budget_usd = 0.0
 
 [tuning]
-keys = "tuning_keys.json" # chapter 7
+keys = "tuning_keys.json"
+candidates = [{}]
+
+[checks]
+oracle_args = ["--scenario", "stuck"]
+oracle_seconds = 14
+visibility_command = ["{python}", "-m", "examples.tinyraid.checks"]
 ```
 
 `{decider_mode}` expands to `bridge`, `rule`, or `tape:<file>` (section 3.2). Every run writes the fully expanded command to `run.json`, so any run can be repeated by hand.
+
+Configuration paths resolve from the TOML file. `game.cwd` selects the project root, not the child's working directory. Each child runs in its private `runs/<id>/work/`; use `{project_dir}` for assets that stay in the project. `game.fixtures` optionally lists files relative to that root; the runner copies a fresh copy into each working directory. Absolute fixture paths and paths escaping the root are rejected.
+
+`{python}` is the current interpreter; `{exe}` uses the optional `game.exe`. Other supported fields are `{project_dir}`, `{seed}`, `{map}`, `{profile}`, `{seconds}`, `{run_dir}`, `{decider_mode}`, `{tuning_file}`, and `{inputs_file}`. Attributes, indexing, format specifiers, and conversions are rejected. A literal argument containing shell punctuation stays one argument. Instruction and tuning-key file paths resolve relative to the config file. Nonempty tuning candidates require a key table; unknown keys, wrong types, and values outside its bounds are rejected.
+
+M2 batch backends are `rule`, `mock`, and `random`. `tape:<file>` remains a replay mode, not a batch policy. Planner settings can describe later work but do not run a planner in M2. `game.exit_codes` can remap `ok`, `contract`, `oracle`, and `divergence` to distinct nonnegative codes.
 
 ## 2.5 Run directory
 
@@ -120,4 +136,10 @@ keys = "tuning_keys.json" # chapter 7
 
 Section 3.8 defines what the adapter must write. Section 4.4 defines when a run is marked invalid.
 
-Join a tape row to the adapter's application/drop receipt by `seq`. The bridge cannot know a delayed choice's outcome when it writes the selection. This split keeps wire protocol v1 unchanged. In M1 the bridge writes `stdout.log`; `run.json` and orchestration are planned for M2.
+Join a tape row to the adapter's application/drop receipt by `seq`. The bridge cannot know a delayed choice's outcome when it writes the selection. This split keeps wire protocol v1 unchanged. The bridge or direct runner writes `stdout.log`; M2 writes `run.json` for every attempt, including launch failures. It records the expanded argument array, private working directory, config path/hash, seed, map, profile, tuning hash, instruction hash, exit mapping, and versions. An unavailable adapter version is null, not inferred.
+
+## 2.6 Batch lifecycle
+
+`run` expands seeds × maps × profiles × offline backends × tuning candidates into stable run IDs and executes at most the configured worker count. Each attempt has a finite wall-clock timeout and is never retried automatically. On POSIX, children use process groups; on Windows, the runner creates the child suspended, assigns a kill-on-close job, and resumes it so descendants remain contained even if the game parent exits.
+
+The output directory must be new. `batch.json` retains the submitted `planned_runs` inventory and completed attempt records. Missing run folders remain invalid entries in the original denominator. `findings.jsonl` includes oracle findings and invalid attempts. `metrics.json` records the independent evidence validation and cell summaries. Ctrl+C cancels queued and running work, records remaining attempts, and marks the batch `interrupted`; it does not silently rerun them.

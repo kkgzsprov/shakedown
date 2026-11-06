@@ -4,7 +4,7 @@
 
 게임용 AI 플레이테스터다. LLM이 테스트 캠페인(campaign)을 계획하고, 빠른 결정 모델이 전술을 고르고, 게임 쪽 실행기(executor)가 실제 입력 경로로 게임을 플레이한다. 모든 결정을 테이프(tape)에 기록하므로 어떤 버그든 결정론적으로 재생된다.
 
-> 상태: 초기 단계. M0(프로토콜, 브리지, 오프라인 디사이더)와 M1(헤드리스 tinyraid 참조 게임, 어댑터, 재생)을 구현했다. M2 이후는 설계 단계다. [설계 문서](docs/ko/README.md)와 [로드맵](docs/ko/09-roadmap.md)을 참고한다.
+> 상태: 초기 단계. M0~M2를 구현했다. 프로토콜과 오프라인 디사이더, tinyraid 참조 게임과 재생, 실행별로 격리된 배치·지표·어댑터 검사를 제공한다. M3 이후는 설계 단계다. [설계 문서](docs/ko/README.md)와 [로드맵](docs/ko/09-roadmap.md)을 참고한다.
 
 ## 동작 방식
 
@@ -48,7 +48,22 @@ python -m examples.tinyraid --seed 7 --duration 12 --decider tape:runs/tinyraid-
 
 설치는 기존 빌드 도구를 사용한다. `setuptools`가 없으면 먼저 설치한다. Python의 Scripts 디렉터리가 `PATH`에 있으면 `python -m shakedown` 대신 `shakedown`을 쓸 수 있다. 예제는 소스 작업본에 있으므로 저장소 루트에서 명령을 실행한다.
 
-브리지는 `decision_tape.jsonl`, `bridge_summary.json`, `stdout.log`를 쓰고, 게임은 지정한 텔레메트리와 입력 기록을 쓴다. 고정된 M1 시드 조합, 버그 픽스처, 선택적 PNG 프레임은 [8장](docs/ko/08-example-game.md)에 있다. `check-adapter`와 `bench`는 M1에 포함되지 않은 계획 명령이다.
+브리지는 `decision_tape.jsonl`, `bridge_summary.json`, `stdout.log`를 쓰고, 게임은 지정한 텔레메트리와 입력 기록을 쓴다. 고정된 M1 시드 조합, 버그 픽스처, 선택적 PNG 프레임은 [8장](docs/ko/08-example-game.md)에 있다. M2에는 아래 배치·적합성 검사 명령이 있다. `bench`, 탐색, 분류, 플래너는 아직 계획이다.
+
+## 배치 실행과 어댑터 검사
+
+위의 편집 가능 설치 후 다음 짧은 배치는 시드 하나로 맵 2개와 프로필 3개를 실행한다. 적합성 검사는 별도 증거를 남긴다.
+
+```bash
+python -m shakedown run --config examples/tinyraid/shakedown.toml --output runs/tinyraid-batch --seeds 1 --seconds 1 --workers 2
+python -m shakedown check-adapter --config examples/tinyraid/shakedown.toml --output runs/tinyraid-checks
+```
+
+명령마다 새 출력 디렉터리를 사용한다. 기존 증거는 덮어쓰지 않는다. `--seeds`와 `--seconds`를 생략하면 예제 설정의 60회(시드 10개 × 맵 2개 × 프로필 3개, 각 12초)를 실행한다. `--seconds 45`는 시뮬레이션 제한을 늘리고, `--deciders rule,mock,random`은 오프라인 정책 비교를 추가한다.
+
+배치는 `batch.json`, `metrics.json`, `findings.jsonl`과 실행별 디렉터리를 쓴다. 무효 실행도 제출된 실행 수에 남기되 비교에서는 제외한다. 적합성 검사는 C1~C7 판정과 증거 경로가 담긴 `conformance.json`을 쓴다. 게임별 픽스처가 없으면 통과가 아니라 `unmeasured`로 표시한다.
+
+`run`은 발견이 없으면 0, 발견이 있으면 1, 설정 오류는 2, 중단 후 남은 실행을 기록하면 130으로 종료한다. `check-adapter`는 모든 검사가 통과해야 0이며, 실패나 미측정 검사가 있으면 1, 설정 오류는 2다. 이 CLI 코드는 게임의 오라클 종료 코드 4와 구분한다.
 
 ## 라이선스
 

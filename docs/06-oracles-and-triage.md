@@ -2,7 +2,7 @@
 
 # 6. Oracles, exploration, and triage
 
-The QA path has three stages: oracles flag a run, exploration decides which runs to try, and triage turns flagged runs into reproduced bugs.
+The full QA path has three stages: oracles flag a run, exploration decides which runs to try, and triage turns flagged runs into reproduced bugs. M2 runs configured batches and aggregates their evidence. The exploration, anomalies, triage, and clips described below remain planned for M3.
 
 ## 6.1 Code oracles
 
@@ -53,8 +53,12 @@ The prototype's two overnight bugs went through this path: both reproduced, and 
 
 ## 6.5 Metrics
 
-After each batch, `aggregate.py` writes `metrics.json` per profile × map × tuning cell, with bootstrap 95 % intervals and same-seed paired comparisons. Decisions are never made from a single mean.
+After each batch, M2 writes `metrics.json` grouped by profile × map × tuning hash × decider. Each metric has a per-run mean, bootstrap 95% interval (`ci95`), and its own measured-run count (`n`). The bootstrap seed and sample count are recorded. Missing observability is `mean: null`, `ci95: null`, `n: 0`, not a successful zero. One observation or constant observed values gives a zero-width bootstrap interval. That interval reflects the observed sample and does not prove population certainty, including when every sampled run extracts successfully.
 
-Game metrics come from the adapter's telemetry: survival or extraction rate, session length, time to first contact, who saw whom first, deaths per contact, hits from unseen shooters, ammo and healing use, loot value.
+The submitted batch inventory fixes the denominator. Missing folders, malformed telemetry, contract errors, divergence, crashes, timeouts, and invalid bridge summaries stay in `invalid_runs` and do not enter policy comparisons. A structurally valid oracle stop contributes to `oracle_rate`; survival and extraction are censored for that stopped run rather than counted as ordinary failure or success.
 
-Shakedown also reports metrics about itself: decisions per run, decider latency p50 and p95, fallback rate, dropped decisions, and the longest run of one repeated tactic, which catches oscillation.
+Game metrics use available telemetry: survival/extraction, session length, first contact, deaths per contact, emitted shots, healing use, and loot. First-observer and unseen-shooter metrics stay unmeasured when their evidence is absent. A shot count does not assume an arbitrary game consumes one ammunition unit per shot. Tinyraid explicitly emits supported zero counters in `run_end`, distinguishing a measured zero from unavailable instrumentation.
+
+Framework metrics use decision receipts, tapes, and bridge summaries: decisions, dropped-decision rate, longest repeated tactic, fallback rate, cost, and latency. Cell latency p50/p95 values are means of each run's percentile, not percentiles pooled across all calls.
+
+Paired comparisons match identical seed IDs within the same profile and map. They change either decider or tuning, never both at once, and report right-minus-left differences with paired bootstrap intervals. Seeds duplicated in a cell are listed as ambiguous and excluded from paired inference. These comparisons do not establish human fairness or M3 bug-detection recall.

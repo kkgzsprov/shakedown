@@ -27,7 +27,7 @@ The adapter is ordinary game code in `examples/tinyraid/adapter.py`, separate fr
 | Executor | Movement along a grid A* path, aim with a reaction delay and seeded jitter, fire when the target is under the cursor |
 | Reflexes | Re-aim on target change, leave a grenade's radius after the reaction time |
 | Rule decider | A short threshold rule for `rule` mode; the hosted-backend fallback is planned |
-| Oracles | Per-step stuck, teleport, numeric, player/NPC bounds, solid collision, and "door opened without key" checks; no-progress warnings. Crash reproduction belongs to the future orchestrator |
+| Oracles | Per-step stuck, teleport, numeric, player/NPC bounds, solid collision, and "door opened without key" checks; no-progress warnings. M2 records crashes; automatic reproduction belongs to future triage |
 
 It speaks the chapter 3 protocol over stdio, exactly as a game in another language would, so the bridge cannot tell it apart from a C++ or Godot game.
 
@@ -62,13 +62,15 @@ A clean game with zero findings is the first acceptance condition. Shakedown's o
 
 tinyraid is a test bed, not a claim about real games. Results on it say whether Shakedown's mechanisms work, not how many bugs it will find in someone else's game.
 
-## 8.5 Running and checking M1
+## 8.5 Running and checking M1–M2
 
 Run the checkout commands in the [root README](../README.md#try-it) from the repository root. `rule`, `bridge`, and `tape:<file>` select decision paths; `--replay-inputs` bypasses all three and loads the complete recorded startup configuration. The `cautious`, `aggressive`, and `looter` profiles set reaction/decision delays and aiming jitter. Both `yard` and `warehouse` maps are available.
 
 `examples/tinyraid/m1-seeds.json` fixes the clean acceptance matrix: seeds 1, 7, and 42 × two maps × three profiles, with a 45-second limit per run (18 runs). M1 acceptance requires C1–C6 and no oracle, contract, divergence, or crash findings in this matrix. Death, extraction, and ordinary timeout remain valid game outcomes. This finite development matrix does not establish M3 held-out benchmark recall.
 
 The tests also cover a C7 wall-visibility fixture, resource conservation, per-step movement/collision, seeded numeric/door/geometry bugs, and delayed decision receipts. Tinyraid's stuck check uses a rolling 10-second window with movement attempted on at least 80% of steps and less than 0.5 m cumulative movement, so brief replanning pauses do not hide a trapped player. The forced-stuck scenario writes a recording that reproduces the oracle with exit code 4.
+
+M2's `examples/tinyraid/shakedown.toml` adds a distinct 60-run batch (seeds 0–9 × two maps × three profiles, `rule`, 12 seconds each). Use `--seconds 45` for a longer limit. The root README shows a six-run smoke override and the generic `check-adapter` command. The supplied oracle fixture forces `stuck`; the visibility fixture tests a hidden guard over multiple steps and includes a visible positive control. Both checks keep replay/process evidence. These are conformance checks, not M3 exploration recall.
 
 For frame dumps, with no graphics dependency or display server:
 

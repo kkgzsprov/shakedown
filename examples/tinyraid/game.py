@@ -425,7 +425,10 @@ class Game:
         if oracle:
             self.emit("oracle", oracle=oracle, x=self.player.x, y=self.player.y)
         self.emit("run_end", outcome=outcome, oracle=oracle, x=self.player.x, y=self.player.y,
-                  distance_walked=self.distance_walked, counts=dict(self.counts), hp=self.player.hp,
+                  distance_walked=self.distance_walked,
+                  counts={name: self.counts[name] for name in
+                          ("shots", "hits", "kills", "contacts", "heals", "loot", "damage_taken")},
+                  hp=self.player.hp,
                   loot=self.player.loot)
 
     def _numeric_ok(self) -> bool:

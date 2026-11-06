@@ -11,6 +11,7 @@ import time
 
 from .deciders import Decider
 from .deciders.tape import TapeDivergence
+from .processes import ProcessControl, close_process, start_process, terminate_process
 from .protocol import (
     EXIT_CONTRACT, EXIT_DIVERGENCE, SOURCES, ProtocolError,
     encode_answer, parse_game_line, request_hash,
@@ -113,7 +114,7 @@ def _read_game(process, log, tape, decider: Decider, instructions: str,
                 digest = request_hash(message) if message["type"] == "decide" else None
         except ProtocolError as error:
             run.contract_error = str(error)[:300]
-            process.kill()
+            terminate_process(process)
             return EXIT_CONTRACT
         if message is None:
             log.write(line)
@@ -129,7 +130,7 @@ def _read_game(process, log, tape, decider: Decider, instructions: str,
                 answer = _record_decision(message, digest, decider, instructions, run, tape)
             except TapeDivergence as error:
                 run.divergence = str(error)[:300]
-                process.kill()
+                terminate_process(process)
                 return EXIT_DIVERGENCE
             try:
                 process.stdin.write(answer.encode("utf-8"))
@@ -141,7 +142,9 @@ def _read_game(process, log, tape, decider: Decider, instructions: str,
 
 def run_bridge(command: list[str], run_dir: Path, decider: Decider, *,
                instructions: str = "", decider_name: str,
-               wall_timeout_s: float | None = None) -> int:
+                wall_timeout_s: float | None = None,
+                cwd: Path | None = None, env: dict | None = None,
+                control: ProcessControl | None = None) -> int:
     """Run a game until it exits, diverges, violates the contract, or times out.
 
     Unexpected decider failures are raised, not misreported as adapter errors.
@@ -156,14 +159,13 @@ def run_bridge(command: list[str], run_dir: Path, decider: Decider, *,
         run_dir.mkdir(parents=True, exist_ok=True)
         with (run_dir / "stdout.log").open("w", encoding="utf-8", newline="") as log, \
              (run_dir / "decision_tape.jsonl").open("w", encoding="utf-8", newline="\n") as tape:
-            process = subprocess.Popen(command, stdin=subprocess.PIPE,
+            process = start_process(command, control=control, stdin=subprocess.PIPE,
                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                       bufsize=0)
+                                       bufsize=0, cwd=cwd, env=env)
 
             def kill_on_timeout():
-                if process.poll() is None:
-                    timed_out.set()
-                    process.kill()
+                timed_out.set()
+                terminate_process(process)
 
             if wall_timeout_s is not None:
                 timer = threading.Timer(wall_timeout_s, kill_on_timeout)
@@ -172,7 +174,7 @@ def run_bridge(command: list[str], run_dir: Path, decider: Decider, *,
             exit_code = _read_game(process, log, tape, decider, instructions, run)
     except BaseException:
         if process is not None and process.poll() is None:
-            process.kill()
+            terminate_process(process)
         raise
     finally:
         try:
@@ -189,6 +191,8 @@ def run_bridge(command: list[str], run_dir: Path, decider: Decider, *,
             if timer is not None:
                 timer.cancel()
                 timer.join()
+            if process is not None:
+                close_process(process)
             try:
                 decider.close()
             finally:
