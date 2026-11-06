@@ -17,6 +17,7 @@ from shakedown.protocol import ProtocolError, canonical_json
 
 from .adapter import Adapter, PROFILES
 from .game import Game
+from .probes import PROBES, input_for_probe
 
 
 BUGS = ("corner_pocket", "thin_wall", "ammo_underflow", "door_no_key", "heal_overflow",
@@ -62,9 +63,10 @@ def read_recording(path: Path) -> dict:
             or data["v"] != 1 or data.get("game") != "tinyraid"):
         raise ValueError("not a tinyraid v1 input recording")
     config, inputs, result = data.get("config"), data.get("inputs"), data.get("result")
-    if type(config) is not dict or set(config) != {
+    required = {
         "seed", "map_name", "duration", "bug", "scenario", "tuning", "profile"
-    }:
+    }
+    if type(config) is not dict or not required <= set(config) or set(config) - required - {"probe"}:
         raise ValueError("invalid recording config")
     if type(inputs) is not list or type(result) is not dict or type(result.get("step")) is not int:
         raise ValueError("invalid input recording")
@@ -96,6 +98,11 @@ def validate_config(config: dict) -> None:
         raise ValueError("unknown bug")
     if type(config["tuning"]) is not dict:
         raise ValueError("tuning must be an object")
+    probe = config.get("probe")
+    if probe is not None and (type(probe) is not str or probe not in PROBES):
+        raise ValueError("unknown input probe")
+    if probe is not None and config["scenario"] != PROBES[probe]["scenario"]:
+        raise ValueError("input probe and startup scenario disagree")
 
 
 def run(args) -> int:
@@ -111,8 +118,10 @@ def run(args) -> int:
         config = {"seed": args.seed, "map_name": args.map, "duration": args.duration,
                   "bug": args.bug, "scenario": args.scenario, "tuning": tuning,
                   "profile": args.profile_name}
+        if args.probe:
+            config.update(probe=args.probe, scenario=PROBES[args.probe]["scenario"])
         validate_config(config)
-    game = Game(**{key: value for key, value in config.items() if key != "profile"})
+    game = Game(**{key: value for key, value in config.items() if key not in {"profile", "probe"}})
     adapter = None if replay else Adapter(game, config["profile"], args.decider)
     inputs = []
     code = 0
@@ -126,6 +135,8 @@ def run(args) -> int:
                 event_input = replay["inputs"][game.step]["input"]
             else:
                 event_input = adapter.tick()
+                if config.get("probe"):
+                    event_input = input_for_probe(config["probe"], game, event_input)
             row = {"step": game.step, "t": game.time, "input": event_input}
             inputs.append(row)
             game.tick(event_input)
@@ -174,6 +185,7 @@ def main(argv=None) -> int:
     parser.add_argument("--replay-inputs", type=Path)
     parser.add_argument("--bug", choices=BUGS)
     parser.add_argument("--scenario", choices=SCENARIOS, default="standard")
+    parser.add_argument("--probe", choices=tuple(PROBES), help="explicit controlled input workflow")
     parser.add_argument("--tuning", type=Path)
     parser.add_argument("--frame-dir", type=Path)
     parser.add_argument("--frame-every", type=int, default=60)

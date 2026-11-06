@@ -34,7 +34,7 @@ def without_latency(rows: list[dict]) -> list[dict]:
 class BridgeTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
+        self.addCleanup(tests.cleanup_temp_directory, self.temp)
         self.base = Path(self.temp.name)
 
     def game_command(self, *, seed: int = 1, decisions: int = 6,

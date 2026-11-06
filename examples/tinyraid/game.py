@@ -150,6 +150,9 @@ class Game:
         self.distance_walked = 0.0
         self._reload_until = self._heal_until = self._next_shot = 0
         self._extract_steps = 0
+        self.extraction_attempts = 0  # Button-held ticks while inside the zone.
+        self.extract_zone_steps = 0  # Actual zone dwell, including no-button ticks.
+        self._loot_opportunities = set()  # Count each reachable nearby crate once.
         self._door_without_key = False
         self._trapped = scenario == "stuck"
         self._movement: deque = deque(maxlen=601)
@@ -297,6 +300,8 @@ class Game:
         self.emit("damage_taken", amount=amount, cause=cause, source=source, warned=warned,
                   hp=self.player.hp)
         if self.player.hp <= 0:
+            if cause == "explosion" and not warned:
+                self.counts["unwarned_explosion_deaths"] += 1
             self.emit("death", cause=cause, source=source, warned=warned)
             self._finish("death")
 
@@ -427,7 +432,11 @@ class Game:
         self.emit("run_end", outcome=outcome, oracle=oracle, x=self.player.x, y=self.player.y,
                   distance_walked=self.distance_walked,
                   counts={name: self.counts[name] for name in
-                          ("shots", "hits", "kills", "contacts", "heals", "loot", "damage_taken")},
+                          ("shots", "hits", "kills", "contacts", "heals", "loot", "damage_taken",
+                           "explosions", "unwarned_explosion_deaths", "loot_opportunities")},
+                  extraction_attempts=self.extraction_attempts,
+                  extract_zone_seconds=self.extract_zone_steps / HZ,
+                  in_extraction_zone=distance(self.position, self.exit_pos) < 1.0,
                   hp=self.player.hp,
                   loot=self.player.loot)
 
@@ -507,6 +516,15 @@ class Game:
         self.distance_walked += moved
         if moved > 1e-8 and p.stance != "crouch" and self.step % 15 == 0:
             self._sound("footsteps", p.x, p.y)
+        if distance(self.position, self.exit_pos) < 1.0:
+            self.extract_zone_steps += 1
+            if inputs.get("extract"):
+                self.extraction_attempts += 1
+        for name, crate in self.crates.items():
+            if (name not in self._loot_opportunities and not crate["looted"]
+                    and distance(self.position, (crate["x"], crate["y"])) < 1.2):
+                self._loot_opportunities.add(name)
+                self.counts["loot_opportunities"] += 1
         self._player_actions(inputs)
         self._oracles(previous, attempted)
         # Terminal success cannot hide an invariant violation from this tick.
@@ -518,6 +536,7 @@ class Game:
         for grenade in list(self.grenades):
             if not self.outcome and self.step >= grenade["explode_step"]:
                 self.grenades.remove(grenade)
+                self.counts["explosions"] += 1
                 self.emit("explosion", x=grenade["x"], y=grenade["y"], warned=grenade["warned"])
                 if distance(self.position, (grenade["x"], grenade["y"])) < 3:
                     self._damage_player(100, "explosion", grenade["owner"], grenade["warned"])

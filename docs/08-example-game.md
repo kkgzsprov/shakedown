@@ -4,7 +4,7 @@
 
 `examples/tinyraid/` is a small real-time game that ships with Shakedown. It has three jobs: show a complete adapter, give contributors something to run with no engine installed, and act as a benchmark with known bugs so that changes to Shakedown can be measured.
 
-M1 implements the headless game, adapter, local rule, input recording/replay, direct decision-tape replay, and optional PNG frames. The exploration/triage benchmark in section 8.4 is planned for M3.
+M1 implements the headless game, adapter, local rule, input recording/replay, direct decision-tape replay, and optional PNG frames. M2 adds batches and conformance checks. M3 adds controlled input-workflow probes, anomaly evidence, verified triage, clips, and the benchmark below.
 
 ## 8.1 The game
 
@@ -27,7 +27,7 @@ The adapter is ordinary game code in `examples/tinyraid/adapter.py`, separate fr
 | Executor | Movement along a grid A* path, aim with a reaction delay and seeded jitter, fire when the target is under the cursor |
 | Reflexes | Re-aim on target change, leave a grenade's radius after the reaction time |
 | Rule decider | A short threshold rule for `rule` mode; the hosted-backend fallback is planned |
-| Oracles | Per-step stuck, teleport, numeric, player/NPC bounds, solid collision, and "door opened without key" checks; no-progress warnings. M2 records crashes; automatic reproduction belongs to future triage |
+| Oracles | Per-step stuck, teleport, numeric, player/NPC bounds, solid collision, and "door opened without key" checks; no-progress warnings. M2 records crashes; M3 triage checks reproduction when faithful source evidence is available |
 
 It speaks the chapter 3 protocol over stdio, exactly as a game in another language would, so the bridge cannot tell it apart from a C++ or Godot game.
 
@@ -51,18 +51,35 @@ Controlled scenarios isolate the input triggers; enabling a bug alone does not g
 
 ## 8.4 Benchmark
 
-The planned M3 command `shakedown bench tinyraid` will run, for each bug alone and for the clean game:
+Run the full controlled holdout benchmark from the repository root after the editable install in the root README:
 
-- A fixed exploration budget per seed set, with the `rule`, `random`, and `mock` deciders by default, and any configured model decider.
-- Search seeds for development and held-out seeds for reporting.
+```bash
+python -m shakedown bench tinyraid --output runs/tinyraid-bench
+```
 
-It reports recall (bugs found and reproduced), precision (findings that match a seeded bug), false findings on the clean game, runs and cost until first detection, and which mechanism caught each bug.
+`benchmark.json` and `benchmark.md` distinguish complete qualification coverage from a passing gate. The primary suite uses `yard`, the `cautious` profile, all three offline policies (`rule`, `random`, `mock`), and seven input workflows. Every clean/single-fault condition gets the same fixed plan, normalized plan hash, and budget. Detectors inspect oracle and telemetry evidence; only the scorer applies expected fault labels after detection and triage.
 
-A clean game with zero findings is the first acceptance condition. Shakedown's own changes are judged on held-out seeds. A run that tunes Shakedown on the same seeds it reports is not evidence.
+The frozen `m3-seeds.json` separates search seeds `[101, 211, 307]` from holdout seeds `[1009, 2003, 3001, 4001, 5003, 6007]`. Default holdout coverage is 7 workflows × 3 policies × 6 seeds = 126 attempts per condition, or 1,008 clean-plus-seven-fault attempts before reproduction and diagnostics. Each cell exhausts its seed pool before repetition.
 
-tinyraid is a test bed, not a claim about real games. Results on it say whether Shakedown's mechanisms work, not how many bugs it will find in someone else's game.
+| Workflow | Ordinary input or behavior under test |
+|---|---|
+| `navigate_corner` | The normal adapter navigates a corner fixture |
+| `sprint_wall` | Sprint against a wall, then stop attempting movement |
+| `reload_fire` | Request reload and fire together through the regular input path |
+| `heal_top_up` | Request healing at full health |
+| `unlock_door` | Try the far side of a locked door without a key |
+| `grenade_escape` | Suppress ordinary walking and preserve the cautious-profile hazard reflex |
+| `crouched_extract` | Attempt extraction while crouched |
 
-## 8.5 Running and checking M1–M2
+These are declared controlled probes, not autonomous discovery in ordinary gameplay. Input generation never branches on the planted-fault switch. Clean and fault runs use the same workflow; independent input replay bypasses probe generation.
+
+Primary recall covers five oracle faults and two anomaly faults. The anomaly gate fixes a minimum of five measured runs, thresholds of 0.25 for unwarned explosion deaths and extraction-zone timeouts, and a measured clean baseline. Other generic thresholds are fixed at 1.0 in this test bed because intentional probe waits are not timeout bugs. Generic exploration retains ordinary defaults. Reports include signature-based precision, independently reproduced recall, clean findings, actual fixed-budget consumption, and the mechanism. The first-detectable run is reconstructed retrospectively from the completed budget, not an observed online stopping time. Offline service cost is zero.
+
+Qualification requires the full holdout seeds, policies, budget, seven primary cases, and both conformance diagnostics. Passing additionally requires equal plans, zero clean findings/invalid executions, and every primary fault matched and independently reproduced. Search or partial/debug coverage is unqualified even if a selected fault reproduces. `vision_leak` (C7) and `wallclock_load` (C3 with a controlled child host clock) are separate diagnostics and do not inflate primary recall. The clock diagnostic does not claim input-replay support for deliberately nondeterministic work.
+
+These results measure Shakedown mechanisms on this fixture suite. They do not estimate unknown-game bug discovery, and a result tuned on the reporting seeds is not independent holdout evidence.
+
+## 8.5 Running and checking M1–M3
 
 Run the checkout commands in the [root README](../README.md#try-it) from the repository root. `rule`, `bridge`, and `tape:<file>` select decision paths; `--replay-inputs` bypasses all three and loads the complete recorded startup configuration. The `cautious`, `aggressive`, and `looter` profiles set reaction/decision delays and aiming jitter. Both `yard` and `warehouse` maps are available.
 
@@ -85,3 +102,5 @@ python -m examples.tinyraid --seed 7 --duration 12 --frame-dir runs/tinyraid-fra
 | `player.speed` | 3.0 m/s | 1.0–5.0 |
 | `guard.damage` | 8.0 | 1.0–20.0 |
 | `guard.vision` | 10.0 m | 3.0–16.0 |
+
+M3 records the optional `probe` name and actual startup scenario. Older seven-field recording configurations remain accepted, but strict game-event hashes still apply. Earlier telemetry or engine semantics are not automatically byte-compatible; an assertion mismatch is a failure, not a claimed migration.

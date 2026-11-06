@@ -4,7 +4,7 @@
 
 ## 2.1 Process model
 
-The diagram is the full design. M0–M2 supply the game/adapter, offline deciders, bridge, replay, isolated batch workers, aggregation, and conformance checks. The planner, exploration, triage, and later stages remain planned.
+The diagram is the full design. M0–M3 supply the game/adapter, offline deciders, bridge, replay, isolated batches, aggregation, conformance checks, and the QA path. LLM planning, optimization, and the later campaign stages remain planned.
 
 ```text
  human: approves goals, campaigns, and any default change
@@ -42,7 +42,7 @@ One bridge process serves one game process. The orchestrator starts N pairs in p
 | Aggregation | Python | Per-cell metrics with bootstrap 95 % intervals and same-seed paired comparison |
 | Explorer | Python | QA sampling that favors under-visited situation cells (chapter 6) |
 | Anomalies | Python | Flags rates that cross a threshold by their Wilson lower bound (chapter 6) |
-| Triage | Python | Groups findings by signature, confirms reproduction from the tape, asks the planner for a bug draft (chapter 6) |
+| Triage | Python | Groups findings, verifies tape/argument and independent input replay, and writes evidence-only drafts (chapter 6) |
 | Optimizer | Python | Random and grid search inside the tuning key table (chapter 7) |
 | Agent skill | Markdown + scripts | Lets a coding agent run all of the above and write an adapter (chapter 5) |
 | Example game | Python | A small real-time game with a reference adapter and switchable seeded bugs (chapter 8) |
@@ -66,13 +66,15 @@ shakedown/
     planner/            planned: CLI backends and schemas
     orchestrate.py      batches → runs → workers
     aggregate.py        metrics.json
-    explore.py (planned)          QA sampling
-    anomalies.py (planned)        anomalies.md
-    triage.py (planned)           findings/
+    explore.py                    QA sampling
+    anomalies.py                anomalies.md
+    triage.py                      findings/
+    clips.py            verified replay frames and encoding
+    bench.py            controlled tinyraid qualification
     optimize.py (planned)         tuning search
     campaign.py (planned)         the planner ↔ optimizer loop with approval gates
     conformance.py      adapter conformance checks (section 3.10)
-    cli.py              `shakedown bridge | run | check-adapter`
+    cli.py              `shakedown bridge | run | check-adapter | explore | anomalies | triage | bench`
   skill/shakedown/      planned agent skill and helper scripts
   examples/tinyraid/    reference game and adapter (chapter 8)
   tests/
@@ -113,6 +115,14 @@ candidates = [{}]
 oracle_args = ["--scenario", "stuck"]
 oracle_seconds = 14
 visibility_command = ["{python}", "-m", "examples.tinyraid.checks"]
+
+[anomalies]
+min_runs = 5
+
+[clips]
+replay_args = ["--frame-dir", "{frame_dir}", "--frame-every", "6"]
+fps = 10
+simulation_hz = 60
 ```
 
 `{decider_mode}` expands to `bridge`, `rule`, or `tape:<file>` (section 3.2). Every run writes the fully expanded command to `run.json`, so any run can be repeated by hand.
@@ -143,3 +153,9 @@ Join a tape row to the adapter's application/drop receipt by `seq`. The bridge c
 `run` expands seeds × maps × profiles × offline backends × tuning candidates into stable run IDs and executes at most the configured worker count. Each attempt has a finite wall-clock timeout and is never retried automatically. On POSIX, children use process groups; on Windows, the runner creates the child suspended, assigns a kill-on-close job, and resumes it so descendants remain contained even if the game parent exits.
 
 The output directory must be new. `batch.json` retains the submitted `planned_runs` inventory and completed attempt records. Missing run folders remain invalid entries in the original denominator. `findings.jsonl` includes oracle findings and invalid attempts. `metrics.json` records the independent evidence validation and cell summaries. Ctrl+C cancels queued and running work, records remaining attempts, and marks the batch `interrupted`; it does not silently rerun them.
+
+## 2.7 QA artifacts and boundaries
+
+M3 adds `exploration.json` (the full sampling plan and skipped draws), `anomalies.json`/`anomalies.md` (measured investigation signals), and a persistent triage catalogue under its own output directory. Signature folders hold drafts, original source receipts, policy/tape reproductions, independent input replay, and optional `clip.json` plus an encoded clip. These stages reuse the isolated M2 runner and do not edit game defaults.
+
+`[explore].variants` adds game-owned argument arrays to coverage cells. `[anomalies]` configures minimum runs, thresholds, and grouping. `[clips]` configures frame-replay arguments and an optional encoder. Their settings remain separate from the game's ordinary command template; neither a variant name nor a planted-fault label is a detection verdict. The controlled benchmark records a frozen seed split and normalized plan hash alongside its results.

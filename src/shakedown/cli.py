@@ -38,6 +38,20 @@ def _backends(value: str) -> list[str]:
     return values
 
 
+def _anomaly_options(config) -> dict:
+    settings = config.raw.get("anomalies", {})
+    if set(settings) - {"min_runs", "thresholds", "group_by"}:
+        raise ValueError("unknown anomaly configuration key")
+    return {"min_runs": settings.get("min_runs", 5),
+            "thresholds": settings.get("thresholds"),
+            "group_by": settings.get("group_by", ("map", "profile", "variant"))}
+
+
+def _analyze(config, directory: Path, baseline: Path | None = None) -> dict:
+    from .anomalies import analyze_batch
+    return analyze_batch(directory, baseline_dir=baseline, **_anomaly_options(config))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="shakedown")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -62,11 +76,73 @@ def main(argv: list[str] | None = None) -> int:
     checks.add_argument("--seed", type=int)
     checks.add_argument("--map", dest="map_name")
     checks.add_argument("--profile")
+    exploration = subparsers.add_parser("explore", help="sample reproducible QA runs within a budget")
+    exploration.add_argument("--config", type=Path, default=Path("shakedown.toml"))
+    exploration.add_argument("--output", type=Path, required=True)
+    exploration.add_argument("--runs", type=int, default=60)
+    exploration.add_argument("--deadline", type=float, help="maximum wall-clock seconds, including active run")
+    exploration.add_argument("--seed", type=int, default=0, help="sampler seed")
+    exploration.add_argument("--tuning-noise", type=int, default=0)
+    exploration.add_argument("--no-steer", action="store_true")
+    exploration.add_argument("--baseline", type=Path)
+    anomaly = subparsers.add_parser("anomalies", help="recompute measured QA signals from batch evidence")
+    anomaly.add_argument("--config", type=Path, default=Path("shakedown.toml"))
+    anomaly.add_argument("--batch", type=Path, required=True)
+    anomaly.add_argument("--baseline", type=Path)
+    triage = subparsers.add_parser("triage", help="group findings and verify independent reproductions")
+    triage.add_argument("--config", type=Path, default=Path("shakedown.toml"))
+    triage.add_argument("--batch", type=Path, required=True)
+    triage.add_argument("--output", type=Path, required=True)
+    triage.add_argument("--clips", action="store_true")
+    benchmark = subparsers.add_parser("bench", help="measure the tinyraid fault-injection test bed")
+    benchmark.add_argument("game", choices=("tinyraid",))
+    benchmark.add_argument("--output", type=Path, required=True)
+    benchmark.add_argument("--split", choices=("search", "holdout"), default="holdout")
+    benchmark.add_argument("--runs", type=int)
+    benchmark.add_argument("--deciders", type=_backends)
+    benchmark.add_argument("--cases", help="comma-separated fault cases; a subset is not a full qualification")
+    benchmark.add_argument("--clips", action="store_true")
     args = parser.parse_args(argv)
-    if args.command in {"run", "check-adapter"}:
+    if args.command == "bench":
+        from .bench import bench_tinyraid
+        try:
+            result = bench_tinyraid(args.output, split=args.split, max_runs=args.runs,
+                                    backends=args.deciders,
+                                    cases=args.cases.split(",") if args.cases is not None else None,
+                                    clips=args.clips)
+            print(json.dumps({key: value for key, value in result.items()
+                              if key not in {"cases", "diagnostics", "plan"}}, ensure_ascii=False))
+            if result.get("status") == "interrupted":
+                return 130
+            return 0 if result.get("gate_passed") is True else 1
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+    if args.command in {"run", "check-adapter", "explore", "anomalies", "triage"}:
         from .config import load_config
         try:
             config = load_config(args.config)
+            if args.command == "anomalies":
+                result = _analyze(config, args.batch, args.baseline)
+                print(f"anomaly_findings={len(result['findings'])} output={args.batch.resolve()}")
+                return 1 if result["findings"] else 0
+            if args.command == "triage":
+                from .triage import triage_batch
+                result = triage_batch(config, args.batch, args.output, clips=args.clips)
+                print(f"signatures={result['signatures']} reproduced={result['reproduced']} "
+                      f"unreproduced={result['unreproduced']} unmeasured={result['unmeasured']} "
+                      f"output={args.output.resolve()}")
+                return 0 if result["unreproduced"] == 0 and result["unmeasured"] == 0 else 1
+            if args.command == "explore":
+                from .explore import explore
+                result = explore(config, args.output, max_runs=args.runs,
+                                 deadline_seconds=args.deadline, seed=args.seed,
+                                 tuning_noise=args.tuning_noise, steer=not args.no_steer)
+                signals = _analyze(config, args.output, args.baseline)
+                print(f"attempted={result['total_runs']} findings={result['findings']} "
+                      f"anomaly_findings={len(signals['findings'])} output={args.output.resolve()}")
+                if result["status"] == "interrupted":
+                    return 130
+                return 1 if result["findings"] or signals["findings"] else 0
             if args.command == "run":
                 from .orchestrate import run_batch
                 result = run_batch(config, args.output, workers=args.workers,
@@ -76,7 +152,9 @@ def main(argv: list[str] | None = None) -> int:
                       f"output={args.output.resolve()}")
                 if result["status"] == "interrupted":
                     return 130
-                return 0 if result["findings"] == 0 else 1
+                signals = _analyze(config, args.output)
+                print(f"anomaly_findings={len(signals['findings'])}")
+                return 0 if result["findings"] == 0 and not signals["findings"] else 1
             from .conformance import check_adapter
             result = check_adapter(config, args.output, seed=args.seed,
                                    map_name=args.map_name, profile=args.profile)

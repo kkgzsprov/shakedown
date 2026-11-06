@@ -6,7 +6,7 @@
 
 Each milestone ends with a check that passes on CI with no network and no key.
 
-Current implementation: M0–M2. M1's direct tests retain the 18-run clean matrix. M2 adds validated TOML configuration, isolated batch workers, inventory-preserving metrics with bootstrap intervals and paired comparisons, and the generic C1–C7 `check-adapter` command. The tinyraid configuration expands to 60 runs. M3 and later remain planned; `bench` is not implemented. Local test results and CI matrix settings are separate evidence; inspect the actual CI run before claiming another platform passed.
+Current implementation: M0–M3. M3 adds seeded coverage exploration, opportunity-based anomaly reports, persistent reproduction-backed triage, replay-verified clips, and the controlled `bench tinyraid` command. The primary benchmark separates search and holdout seeds and requires zero clean findings plus reproduced oracle/anomaly faults. M4 and later remain planned. Local validation and current-commit CI are separate evidence; inspect the actual run before claiming another platform passed.
 
 | Milestone | Contents | Done when |
 |---|---|---|

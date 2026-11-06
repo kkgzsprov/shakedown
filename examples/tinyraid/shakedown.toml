@@ -26,3 +26,11 @@ candidates = [{}]
 oracle_args = ["--scenario", "stuck"]
 oracle_seconds = 14
 visibility_command = ["{python}", "-m", "examples.tinyraid.checks"]
+
+[anomalies]
+min_runs = 5
+
+[clips]
+replay_args = ["--frame-dir", "{frame_dir}", "--frame-every", "6"]
+fps = 10
+simulation_hz = 60

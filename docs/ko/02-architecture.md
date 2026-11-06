@@ -4,7 +4,7 @@
 
 ## 2.1 프로세스 모델
 
-아래 그림은 전체 설계다. M0~M2에는 게임·어댑터, 오프라인 디사이더, 브리지, 재생, 실행별로 격리된 배치 워커, 집계, 적합성 검사가 있다. 플래너, 탐색, 분류와 이후 단계는 아직 계획이다.
+아래 그림은 전체 설계다. M0~M3는 게임·어댑터, 오프라인 디사이더, 브리지, 재생, 격리 배치, 집계, 적합성 검사, QA 경로를 제공한다. LLM 계획·최적화·이후 캠페인 단계는 앞으로 구현한다.
 
 ```text
  human: approves goals, campaigns, and any default change
@@ -42,7 +42,7 @@
 | 집계 | Python | 셀별 지표. 부트스트랩 95 % 구간과 같은 시드(seed) 쌍 비교를 쓴다 |
 | 탐색기 | Python | 덜 방문한 상황 셀을 우선하는 QA 샘플링 (6장) |
 | 이상 신호(anomaly) | Python | Wilson 하한이 임계값을 넘는 비율을 표시한다 (6장) |
-| 분류(triage) | Python | 발견(finding)을 시그니처로 묶고, 테이프로 재현을 확인하고, 플래너에게 버그 초안을 요청한다 (6장) |
+| 분류(triage) | Python | 발견을 묶고, 테이프·인자와 독립 입력 재생을 검증하고, 증거만 담은 초안을 쓴다 (6장) |
 | 최적화기 | Python | 튜닝(tuning) 키 표 안에서 무작위 탐색과 격자 탐색 (7장) |
 | 에이전트 스킬 | Markdown + 스크립트 | 코딩 에이전트가 위의 모든 것을 돌리고 어댑터를 작성하게 한다 (5장) |
 | 예제 게임 | Python | 참조 어댑터와, 켜고 끌 수 있는 심어 둔 버그를 갖춘 작은 실시간 게임 (8장) |
@@ -66,13 +66,15 @@ shakedown/
     planner/            planned: CLI backends and schemas
     orchestrate.py      batches → runs → workers
     aggregate.py        metrics.json
-    explore.py (planned)          QA sampling
-    anomalies.py (planned)        anomalies.md
-    triage.py (planned)           findings/
+    explore.py                    QA sampling
+    anomalies.py                anomalies.md
+    triage.py                      findings/
+    clips.py            verified replay frames and encoding
+    bench.py            controlled tinyraid qualification
     optimize.py (planned)         tuning search
     campaign.py (planned)         the planner ↔ optimizer loop with approval gates
     conformance.py      adapter conformance checks (section 3.10)
-    cli.py              `shakedown bridge | run | check-adapter`
+    cli.py              `shakedown bridge | run | check-adapter | explore | anomalies | triage | bench`
   skill/shakedown/      planned agent skill and helper scripts
   examples/tinyraid/    reference game and adapter (chapter 8)
   tests/
@@ -113,6 +115,14 @@ candidates = [{}]
 oracle_args = ["--scenario", "stuck"]
 oracle_seconds = 14
 visibility_command = ["{python}", "-m", "examples.tinyraid.checks"]
+
+[anomalies]
+min_runs = 5
+
+[clips]
+replay_args = ["--frame-dir", "{frame_dir}", "--frame-every", "6"]
+fps = 10
+simulation_hz = 60
 ```
 
 `{decider_mode}`는 `bridge`, `rule`, `tape:<file>` 중 하나로 펼쳐진다(3.2절). 모든 실행은 완전히 펼친 명령을 `run.json`에 쓴다. 그래서 어떤 실행이든 손으로 다시 돌릴 수 있다.
@@ -143,3 +153,9 @@ M2 배치 백엔드는 `rule`, `mock`, `random`이다. `tape:<file>`은 배치 �
 `run`은 시드 × 맵 × 프로필 × 오프라인 백엔드 × 튜닝 후보를 안정적인 실행 ID로 펼치고, 설정한 워커 수 이내에서 실행한다. 각 시도에는 유한한 실제 시간 제한이 있으며 자동으로 재시도하지 않는다. POSIX에서는 프로세스 그룹을 쓴다. Windows에서는 자식을 일시 정지 상태로 만들고 마지막 핸들을 닫으면 종료되는 작업 개체(job)에 배정한 뒤 재개하므로, 게임 부모가 먼저 종료해도 자손 프로세스를 제어한다.
 
 출력 디렉터리는 새 경로여야 한다. `batch.json`은 제출된 `planned_runs` 목록과 시도별 결과를 보존한다. 실행 폴더가 없어져도 원래 분모의 무효 항목으로 남긴다. `findings.jsonl`에는 오라클 발견과 무효 시도를 쓰고, `metrics.json`에는 독립적인 증거 검사와 셀별 집계를 쓴다. Ctrl+C는 대기·실행 중 작업을 취소하고 남은 시도를 기록해 배치를 `interrupted`로 표시한다. 조용히 다시 실행하지 않는다.
+
+## 2.7 QA 산출물과 경계
+
+M3는 `exploration.json`(전체 샘플 계획과 건너뛴 항목), `anomalies.json`·`anomalies.md`(측정된 조사 신호), 별도 출력 디렉터리의 영속 분류 카탈로그를 추가한다. 시그니처 폴더는 초안, 원본 소스 영수증, 정책·테이프 재현, 독립 입력 재생, 선택적인 `clip.json`과 인코딩 클립을 보관한다. 이 단계들은 격리된 M2 실행기를 재사용하며 게임 기본값을 고치지 않는다.
+
+`[explore].variants`는 게임이 정의한 인자 배열을 방문 셀에 추가한다. `[anomalies]`는 최소 실행 수·임계값·그룹을, `[clips]`는 프레임 재생 인자와 선택적인 인코더를 설정한다. 일반 게임 명령 템플릿과 구분하며, 변형 이름이나 심어 둔 버그 이름을 탐지 판정으로 쓰지 않는다. 통제된 벤치마크는 고정 시드 분할과 정규화된 계획 해시를 결과와 함께 남긴다.

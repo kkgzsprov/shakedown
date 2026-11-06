@@ -182,7 +182,24 @@ def load_config(path: str | Path) -> ProjectConfig:
     path = Path(path).resolve()
     with path.open("rb") as stream:
         raw = tomllib.load(stream)
-    _table(raw, "configuration", {"game", "batch", "decider", "tuning", "checks", "planner"})
+    _table(raw, "configuration", {"game", "batch", "decider", "tuning", "checks", "planner",
+                                  "explore", "anomalies", "triage", "clips"})
+    for section in ("explore", "anomalies", "triage", "clips"):
+        if section in raw and type(raw[section]) is not dict:
+            raise ValueError(f"{section} must be a table")
+    # Invalid QA settings must not consume an execution budget before failing.
+    from .anomalies import DEFAULT_THRESHOLDS, GROUP_FIELDS
+    anomaly = _table(raw.get("anomalies", {}), "anomalies", {"min_runs", "thresholds", "group_by"})
+    _integer(anomaly.get("min_runs", 5), "anomalies.min_runs", 1)
+    thresholds = _table(anomaly.get("thresholds", {}), "anomalies.thresholds", set(DEFAULT_THRESHOLDS))
+    for key, value in thresholds.items():
+        if _number(value, f"anomalies.thresholds.{key}") > 1:
+            raise ValueError("anomaly thresholds must be rates from zero to one")
+    grouping = anomaly.get("group_by", ["map", "profile", "variant"])
+    if (type(grouping) is not list or any(type(key) is not str or key not in GROUP_FIELDS for key in grouping)
+            or len(set(grouping)) != len(grouping)):
+        raise ValueError("anomalies.group_by must contain unique supported metadata fields")
+    _table(raw.get("triage", {}), "triage", set())
     game = _table(raw.get("game", {}), "game", {
         "command", "replay_command", "exe", "cwd", "maps", "profiles", "fixtures", "exit_codes"})
     batch = _table(raw.get("batch", {}), "batch", {

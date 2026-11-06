@@ -2,13 +2,13 @@
 
 # Shakedown
 
-AI playtester for games: an LLM plans test campaigns, a fast decision model picks tactics, and a game-side executor plays through the real input path. Every decision is taped, so every bug replays deterministically.
+An offline AI playtesting pipeline for games. A game-side executor plays through the ordinary input path, and Shakedown records decisions and inputs so supported deterministic failures can be reproduced. LLM campaign planning is the next milestone.
 
-> Status: early. M0–M2 are implemented: the protocol and offline deciders, the tinyraid reference game and replay, and isolated batches with metrics and adapter checks. M3 and later remain design. See [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
+> Status: early. M0–M3 are implemented: protocol and offline deciders, tinyraid and replay, isolated batches and adapter checks, and the QA path with exploration, anomaly reports, verified triage, clips, and a controlled tinyraid benchmark. M4 and later remain design. See [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
 
 ## How it works
 
-Shakedown runs bot players on three layers, each working at a different speed:
+The full design has three layers, each working at a different speed. The planner integration starts at M4; current runs use offline deciders:
 
 - **Planner (System 2).** An LLM such as Claude Code or Codex writes the test campaign between batches of runs. It picks player profiles, states hypotheses, and sets the tuning ranges to explore. It is never called during play.
 - **Decider (System 1).** A fast decision model chooses one tactic from a list of legal options that your game builds. It does not compute coordinates or aim. A random baseline, a game rule, and a tape replayer work with no network.
@@ -16,7 +16,7 @@ Shakedown runs bot players on three layers, each working at a different speed:
 
 Game time pauses while the decider thinks, so model latency never changes the outcome. Each answer is written to a tape, so any run can be replayed exactly without calling the model again.
 
-Code-level oracles check for stuck players, teleports, out-of-range stats, and crashes. Every finding comes with its seed, a replay file, and optionally a short video. Between batches, an optimizer proposes balance changes. They are validated on held-out seeds, written as a patch, and never applied without a human.
+Code-level oracles check stuck players, teleports, and out-of-range stats; the runner records crashes and other invalid attempts. Triage distinguishes reproduced findings from missing or failed evidence and can make a replay-backed clip. The optimizer and balance-proposal loop remain planned.
 
 ## Requirements
 
@@ -48,7 +48,7 @@ python -m examples.tinyraid --seed 7 --duration 12 --decider tape:runs/tinyraid-
 
 The install uses the existing build tools; install `setuptools` first if it is absent. `shakedown` is equivalent to `python -m shakedown` when Python's Scripts directory is on `PATH`. The example stays in this source checkout, so run its commands from the repository root.
 
-The bridge writes `decision_tape.jsonl`, `bridge_summary.json`, and `stdout.log`; the game writes the requested telemetry and input recording. [Chapter 8](docs/08-example-game.md) documents the fixed M1 seed matrix, bug fixtures, and optional PNG frames. M2 adds the batch and conformance commands below; `bench`, exploration, triage, and the planner remain planned.
+The bridge writes `decision_tape.jsonl`, `bridge_summary.json`, and `stdout.log`; the game writes the requested telemetry and input recording. [Chapter 8](docs/08-example-game.md) documents the fixed M1 seed matrix, bug fixtures, and optional PNG frames. The commands below cover batch execution, conformance, and M3 QA. The planner remains planned for M4.
 
 ## Batch runs and adapter checks
 
@@ -64,6 +64,26 @@ Use a new output directory for each invocation; existing evidence is never overw
 A batch writes `batch.json`, `metrics.json`, `findings.jsonl`, and a directory per run. Invalid executions remain in the submitted count and are excluded from comparisons. Adapter checks write `conformance.json` with C1–C7 verdicts and evidence paths. Missing game-specific fixtures are `unmeasured`, never passed.
 
 The `run` command exits 0 with no findings, 1 when findings exist, 2 for configuration errors, and 130 after an interrupted batch has recorded its remaining attempts. `check-adapter` exits 0 only when every check passes, 1 for failed or unmeasured checks, and 2 for configuration errors. These CLI codes differ from the game's oracle exit code 4.
+
+## Exploration, triage, and clips
+
+A bounded exploration uses the configured maps, profiles, and offline deciders. These commands keep sampled plans, measured signals, and reproduction evidence separate:
+
+```bash
+python -m shakedown explore --config examples/tinyraid/shakedown.toml --output runs/tinyraid-explore --runs 6 --seed 17
+python -m shakedown anomalies --config examples/tinyraid/shakedown.toml --batch runs/tinyraid-explore
+python -m shakedown triage --config examples/tinyraid/shakedown.toml --batch runs/tinyraid-explore --output runs/tinyraid-triage --clips
+```
+
+Exploration favors the least-covered map/profile/decider/variant cell and exhausts each cell's shuffled seed pool before reusing seeds. It is sequential so `--deadline <seconds>` can stop new work and bound the active run. `exploration.json` retains the complete plan and skipped draws; the batch denominator contains attempted runs. `--tuning-noise 1` through `3` samples bounded key-table values; `--no-steer` disables coverage steering.
+
+`anomalies.json` and `anomalies.md` identify measured groups to investigate. They require a minimum sample count, a Wilson lower bound above the configured threshold, and a rate above the measured overall or `--baseline` clean batch rate. Missing opportunities remain unmeasured. A flag is not a confirmed bug.
+
+Triage keeps `findings/index.json`, a summary, source hashes, deterministic `bug_draft.json` files, and reproduction attempts. Oracle and anomaly confirmation requires both policy/tape reproduction and independent input replay. Existing signatures are deduplicated without silently retrying them. Drafts do not call an LLM or invent a cause. With `--clips`, a matching input replay can produce an animated GIF; an optional external encoder supports other formats.
+
+QA CLI exit codes describe the stage: `explore` returns 1 for execution/oracle findings or anomaly flags and 130 for interruption; `anomalies` returns 1 for flags; `triage` returns 1 when any signature is unreproduced or unmeasured. `bench` returns 0 only for a passing qualification gate, 1 for failed or unqualified coverage, and 130 for interruption. Configuration errors return 2.
+
+The controlled tinyraid benchmark uses disjoint search and holdout seeds and applies the same input-workflow probes to clean and single-fault games. See [chapter 8](docs/08-example-game.md#84-benchmark) for the full command, qualification rules, and the boundary between test-bed coverage and autonomous discovery in an unfamiliar game.
 
 ## License
 

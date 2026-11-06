@@ -173,6 +173,9 @@ def run_case(config: ProjectConfig, run_dir: Path, *, seed: int,
     values = dict(tuning or {})
     record = _attempt_record(config, run_dir, seed=seed, map_name=map_name, profile=profile,
                              decider=decider, seconds=seconds, tuning=values)
+    record["extra_args"] = list(extra_args)
+    if replay_inputs is not None:
+        record["replay_inputs"] = str(Path(replay_inputs).resolve())
     if control is not None and control.cancelled.is_set():
         record.update(status="error", invalid_reasons=["cancelled"])
         write_json(run_dir / "run.json", record)
