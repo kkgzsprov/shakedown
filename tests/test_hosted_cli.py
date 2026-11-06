@@ -61,6 +61,18 @@ class HostedCliTests(unittest.TestCase):
         self.assertEqual(factory.call_args.kwargs["hosted_runtime"].model, "jev-1.14.0")
         self.assertEqual(self.server.requests, [])
 
+    def test_hosted_bridge_defaults_to_jev_1_13_0_when_model_is_omitted(self):
+        config = self.configured()
+        config.write_text(config.read_text(encoding="utf-8").replace('model = "jev-1.14.0"\n', ""), encoding="utf-8")
+        self.assertNotIn("model =", config.read_text(encoding="utf-8"))
+        with patch.object(cli, "make_decider", return_value=sentinel.decider) as factory, \
+             patch.object(cli, "run_bridge", side_effect=self.bridge_result()):
+            result = self.invoke(["bridge", "--decider", "jev", "--config", config,
+                "--run-dir", self.root / "default-model-bridge", "--", sys.executable, "-c", "pass"])
+        self.assertEqual(result, 0)
+        self.assertEqual(factory.call_args.kwargs["hosted_runtime"].model, "jev-1.13.0")
+        self.assertEqual(self.server.requests, [])
+
     def test_explicit_bridge_instructions_and_timeout_override_config_defaults(self):
         config = self.configured()
         override = self.root / "override.txt"
@@ -101,7 +113,7 @@ class HostedCliTests(unittest.TestCase):
         self.fixture.assert_no_secret()
 
     def test_hosted_model_and_budget_preflight_prevents_process_and_output(self):
-        changes = ((lambda text: text.replace('model = "jev-1.14.0"\n', "")),
+        changes = ((lambda text: text.replace('model = "jev-1.14.0"', 'model = "1.13.0"')),
                    (lambda text: text.replace('model = "jev-1.14.0"', 'model = "jev-latest"')),
                    (lambda text: text.replace("budget_usd = 0.1", "budget_usd = 0")))
         for index, mutate in enumerate(changes):

@@ -11,6 +11,8 @@ import string
 import sys
 import tomllib
 
+from .deciders.jev_defaults import DEFAULT_JEV_MODEL
+
 
 OFFLINE_BACKENDS = frozenset({"rule", "mock", "random"})
 BACKENDS = OFFLINE_BACKENDS | {"jev"}
@@ -265,7 +267,8 @@ def load_config(path: str | Path) -> ProjectConfig:
         raise ValueError("batch deciders must be rule, mock, random, or jev")
     _number(decider.get("budget_usd", 0), "decider.budget_usd")
     if "jev" in backends:
-        if type(decider.get("model")) is not str or re.fullmatch(r"jev-\d+\.\d+\.\d+", decider["model"]) is None:
+        model = decider.get("model", DEFAULT_JEV_MODEL)
+        if type(model) is not str or re.fullmatch(r"jev-\d+\.\d+\.\d+", model) is None:
             raise ValueError("jev requires an explicitly pinned model such as jev-X.Y.Z")
         _number(decider.get("budget_usd", 0), "decider.budget_usd", strict=True)
     for key, default in (("call_budget_usd", .001), ("timeout_s", 3), ("max_elapsed_s", 12)):
