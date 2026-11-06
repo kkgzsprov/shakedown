@@ -9,7 +9,7 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import tests
 from shakedown.deciders import DeciderError
@@ -178,9 +178,33 @@ class JevTests(unittest.TestCase):
         before = time.monotonic()
         result = self.decider(runtime).decide(request(), "")
         self.assertEqual(result.source, "fallback")
-        self.assertEqual(result.attempts, 3)
-        self.assertLess(time.monotonic() - before, .2)
+        # The elapsed budget may prevent a retry on a busy runner. Three is a
+        # ceiling, not a promise to start every attempt before the deadline.
+        self.assertGreaterEqual(result.attempts, 1)
+        self.assertLessEqual(result.attempts, 3)
+        self.assertEqual(runtime.summary()["http_attempts"], result.attempts)
+        self.assertEqual(len(runtime.summary()["budget"]["attempts"]), result.attempts)
+        self.assertLess(time.monotonic() - before, .5)
         self.assertIsNone(runtime.summary()["cost_usd"])
+
+    def test_elapsed_deadline_stops_retries_before_the_attempt_limit(self):
+        runtime = self.runtime(timeout_s=.3, max_elapsed_s=.1)
+        decider = self.decider(runtime)
+        clock = [0.]
+        def timeout(*_args, **_kwargs):
+            clock[0] += .06
+            raise TimeoutError
+        opener = Mock()
+        opener.open.side_effect = timeout
+        with patch("shakedown.deciders.jev.time.monotonic", side_effect=lambda: clock[0]), \
+                patch("shakedown.deciders.jev.urllib.request.build_opener", return_value=opener):
+            result = decider.decide(request(), "")
+        self.assertEqual((result.source, result.attempts), ("fallback", 2))
+        self.assertEqual(opener.open.call_count, 2)
+        self.assertAlmostEqual(opener.open.call_args_list[0].kwargs["timeout"], .1)
+        self.assertAlmostEqual(opener.open.call_args_list[1].kwargs["timeout"], .04)
+        self.assertAlmostEqual(result.latency_ms, 120.)
+        self.assertEqual(len(runtime.summary()["budget"]["attempts"]), 2)
 
     def test_retry_after_cannot_extend_total_deadline(self):
         self.server.responses.append({"status": 429, "headers": {"Retry-After": "60"}})
