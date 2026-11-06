@@ -417,7 +417,3 @@ The evidence has these limits:
 ## License
 
 [Apache License 2.0](LICENSE).
-
-## About this README
-
-This README uses the writing rules of ASD-STE100 Simplified Technical English: short sentences, one instruction in each step, active voice, and NOTE blocks. Command names, file names, and project terms are technical names.

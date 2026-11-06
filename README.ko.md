@@ -417,7 +417,3 @@ API 키는 설정된 환경 변수에 둔다. Shakedown은 게임의 환경에�
 ## 라이선스
 
 [Apache License 2.0](LICENSE).
-
-## 이 README에 대해
-
-이 README는 ASD-STE100 Simplified Technical English의 작성 규칙을 따른다. 짧은 문장, 절차마다 지시 하나, 능동태, 참고(NOTE) 블록을 쓴다. 명령 이름, 파일 이름, 프로젝트 용어는 기술 명칭으로 취급한다. 한국어판은 영어판의 구조와 문장 단위를 그대로 따른다.
