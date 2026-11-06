@@ -93,6 +93,13 @@
       ]
     }
   },
-  "hotPaths": [],
+  "hotPaths": [
+    {
+      "path": "tests/test_hosted_cli.py",
+      "accessCount": 3,
+      "lastAccessed": 1793950083652,
+      "type": "file"
+    }
+  ],
   "userDirectives": []
 }
