@@ -47,7 +47,6 @@ If E1 shows the model is no better than the rule, the balance loop runs on the r
 
 | Question | Why it matters |
 |---|---|
-| License | Not chosen yet. It decides whether studios can embed the adapter templates in closed games. A permissive license (MIT or Apache-2.0) fits that use. |
 | Protocol versioning | How a bridge handles an adapter on an older `v`. For now the bridge rejects any `v` other than 1 as a contract error. |
 | Rate limits of hosted deciders | Not documented for Jev. They set the worker count for M7. |
 | Multiplayer and co-op games | One bot per process for now. Several bots in one session would need one request per bot per decision point. |

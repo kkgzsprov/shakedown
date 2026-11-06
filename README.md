@@ -122,4 +122,4 @@ The M7 `jev` backend sends fixed-choice questions through the bridge, with an ex
 
 ## License
 
-Not chosen yet (see [open questions](docs/09-roadmap.md#94-open-questions)).
+[Apache License 2.0](LICENSE).
