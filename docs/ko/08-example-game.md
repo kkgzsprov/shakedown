@@ -4,7 +4,7 @@
 
 `examples/tinyraid/`는 Shakedown과 함께 배포하는 작은 실시간 게임이다. 이 게임이 맡는 일은 세 가지다. 완전한 어댑터(adapter)를 보여 주고, 기여자에게 엔진 없이 돌려 볼 대상을 주고, 알려진 버그가 든 벤치마크로서 Shakedown의 변경을 측정할 수 있게 한다.
 
-M1은 헤드리스 게임·어댑터·로컬 규칙·입력 기록과 재생·직접 결정 테이프 재생·선택적 PNG 프레임을 구현한다. M2는 배치와 적합성 검사를 추가하고, M3는 통제된 입력 워크플로 프로브·이상 신호 증거·검증된 분류와 재현·클립·아래 벤치마크를 추가한다.
+M1은 헤드리스 게임·어댑터·로컬 규칙·입력 기록과 재생·직접 결정 테이프 재생·선택적 PNG 프레임을 구현한다. M2는 배치와 적합성 검사를 추가하고, M3는 통제된 입력 워크플로 프로브·이상 신호 증거·검증된 분류와 재현·클립·아래 벤치마크를 추가한다. M5는 별도 심은 목표 밸런스 벤치마크, M6는 두 번째 이산 버튼 어댑터 Switchyard를 추가한다.
 
 ## 8.1 게임
 
@@ -104,3 +104,26 @@ python -m examples.tinyraid --seed 7 --duration 12 --frame-dir runs/tinyraid-fra
 | `guard.vision` | 10.0 m | 3.0~16.0 |
 
 M3는 선택적인 `probe` 이름과 실제 시작 시나리오를 기록한다. 이전 일곱 필드 설정도 읽지만 게임 이벤트 해시는 엄격히 비교한다. 이전 텔레메트리·엔진 의미가 자동으로 바이트 호환되는 것은 아니며, assertion 불일치는 이관 성공이 아닌 실패다.
+
+## 8.6 심은 밸런스 목표
+
+`bench tinyraid-balance`는 M3 버그 벤치마크와 별개인 고정 계획 수치 탐색 검사다.
+
+```bash
+python -m shakedown bench tinyraid-balance --output runs/tinyraid-balance-bench
+```
+
+`examples/tinyraid/m5-seeds.json`의 시드 집합을 고정하고 `player.speed`만 탐색하며 맵·실행 시간·지시문·소스 해시·정책을 유지한다. 주 정책 `rule`은 보류 시드에서 합성 전리품 목표 55~60을 달성해야 한다. `mock`은 선호 역전을 별도로 검사하며 목표 범위 밖에 남을 수 있다. 게이트 통과는 모든 정책의 목표 달성이나 사람 기준 밸런스를 뜻하지 않는다. `benchmark.json`, 일반 캠페인 증거와 적용하지 않은 제안 패치를 쓴다.
+
+탐색·보류 분리와 심은 목표는 검증 설계 입력이며 실행 통과 증거는 아니다. 보존된 출력의 `gate_passed`, 주 `rule` 정책의 목표 거리, 완전한 표본, 오라클 비교, 고정된 선택을 확인한다. 기준선이 이미 범위 안인 더 약한 목표는 개선 제안을 내지 않아야 한다. tinyraid는 `tuning_keys.json`을 실제 런타임 기본값으로 읽으며 벤치마크 제안은 이 파일을 편집하지 않는다.
+
+## 8.7 Switchyard와 스킬 검증
+
+`examples/switchyard/`는 `depot`·`loop` 맵과 `courier`·`careful` 프로필을 가진 결정론적 턴제 소포 경로 퍼즐이다. 얇은 실행기는 선택 행동마다 일반 버튼을 `Game.tick`에 전달한다. 입력 재생은 어댑터 없이 시작 상태를 복원한다. 설정에는 오라클 픽스처와 숨은 통행의 가시성 검사가 있다.
+
+```bash
+python -m shakedown check-adapter --config examples/switchyard/shakedown.toml --output runs/switchyard-checks
+python -m shakedown run --config examples/switchyard/shakedown.toml --output runs/switchyard-batch
+```
+
+출력은 새 디렉터리를 쓴다. 검사들은 C1~C7 판정을 별도로 보존하며, 배치는 두 맵·두 프로필·세 시드·`rule`과 `mock`을 사용한다. 이 예제는 [에이전트 스킬](../../skill/shakedown/SKILL.md) 검증 흐름을 다룬다. 배포 구현은 스킬을 읽기 전에 작성됐다. 별도 새 컨텍스트 실험은 스킬·게임 규칙·프로토콜·설정만 읽고 기존 어댑터 없이 독립 어댑터를 작성했다. seed 7/depot/courier에서 C1~C6이 통과해 최소 기준 C1~C3을 만족했지만 C7은 `unmeasured`여서 전체 7개 검사 판정도 미측정으로 남았다. 이는 범위를 한정한 블라인드 어댑터 증거이며 넓은 처음 보는 게임의 일반화는 아니다. 퍼즐이나 적합성 검사는 실시간 조준·사람 같은 플레이·시각 품질을 입증하지 않는다.

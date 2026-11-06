@@ -2,18 +2,18 @@
 
 # 7. Balance loop
 
-The balance loop produces evidence for a human design decision. It searches tuning values against human-approved target ranges and proposes a change only after it holds up on seeds the search never saw.
+The M5 balance loop produces evidence for a human design decision. `campaign --optimize` searches tuning values against human-approved target ranges and proposes a change only after it holds up on seeds the search never saw. Without `--optimize`, `campaign` retains the M4 single baseline round. Neither mode applies defaults.
 
 ## 7.1 Tuning key table
 
-The game exposes tunable values through a key table. Shakedown keeps a copy as `tuning_keys.json` (keys and ranges below are illustrative):
+The game exposes tunable values through a key table. Shakedown reads `tuning.keys` relative to the configuration file. M5 requires a documented `default` or `baseline` for every key so it can construct a complete fixed baseline (keys and ranges below are illustrative):
 
 ```json
 {
   "keys": {
-    "squad.fireTokens":        {"type": "int",   "min": 1,   "max": 4,   "unit": "count"},
-    "squad.tokenReturnSeconds":{"type": "float", "min": 0.2, "max": 1.5, "unit": "s"},
-    "detection.baseRange":     {"type": "float", "min": 20,  "max": 70,  "unit": "m"}
+    "squad.fireTokens":        {"type": "int",   "min": 1,   "max": 4,   "default": 3,   "unit": "count"},
+    "squad.tokenReturnSeconds":{"type": "float", "min": 0.2, "max": 1.5, "default": 0.7, "unit": "s"},
+    "detection.baseRange":     {"type": "float", "min": 20,  "max": 70,  "default": 40,  "unit": "m"}
   }
 }
 ```
@@ -26,20 +26,52 @@ A run's tuning file holds values only:
 
 The adapter rejects unknown keys and out-of-range values with exit code 2. A missing tuning file must leave every default unchanged. The conformance suite checks that the game's key table and `tuning_keys.json` agree.
 
+Tinyraid loads this table as the actual source of its bounds and defaults. For other games, the table may only document defaults: verify how the game consumes them before applying a proposed patch. A proposal changes numeric default fields in the table, not arbitrary game source code. The table must be inside the configured project root.
+
 Choose keys the game actually reads at the point that matters. In the prototype, per-weapon parameters overwrote two cone keys, so they were replaced by one multiplier applied to every enemy burst. That multiplier is applied before a cap, so values above 1 are clipped at long range. The key table should record such limits.
 
 ## 7.2 The loop
 
 1. The planner drafts `targets.json`. A human edits and approves it.
 2. The planner writes `campaign.json`. A human approves it.
-3. The orchestrator runs each tuning candidate over N seeds × profiles × maps. The default is N = 20. Seeds are split into search seeds and holdout seeds, and holdout seeds are used only at the end.
-4. Aggregate → label → planner `revise` → the optimizer proposes the next candidates inside the key table. The first optimizer is standard-library random and grid search.
-5. After the set number of rounds, the top candidates rerun on holdout seeds, and the planner writes `report.md`.
-6. Shakedown writes a patch for any candidate that passes the gate (section 7.4). A human decides whether to apply it.
+3. The orchestrator measures the documented baseline, then samples candidates with standard-library random or lazy grid search. Every experiment must use the campaign's global `search_ranges`. It takes the first `batch_size` search seeds from each experiment and merges duplicate profile/map scopes without duplicating their seeds. Every scope needs at least `min_runs` unique seeds.
+4. Each round aggregates metrics and anomaly signals. The default is a fixed schedule using the approved campaign's `rounds`. With `planner_revisions = true`, the configured planner can stop or revise numeric ranges. Revisions are clipped to the approved search box and logged; they cannot introduce keys or change policy instructions. Human/model labeling is not supplied automatically.
+5. Search metrics rank the candidates. `selection.json` freezes the top `top_k` measured improvements before any holdout run. Only then do the baseline and those candidates run once on the reserved holdout set. If search has no measured improvement, the holdout set remains unused.
+6. The deterministic gate (section 7.4) controls patch output. `report.md` records the campaign evidence, and `planner-report/` contains a supplemental planner draft. A human decides whether to apply a proposal.
+
+Add a `[balance]` table before approving targets and the campaign. This example uses seeds outside the bundled configuration's search set; choose a fresh holdout set for your own experiment:
+
+```toml
+[balance]
+method = "grid"
+seed = 0
+candidates_per_round = 4
+grid_points = 3
+holdout_seeds = [10007, 10009, 10037, 10039, 10061]
+min_runs = 5
+min_gain = 0.2
+top_k = 1
+max_runs = 1000
+policies = ["rule", "mock"]
+planner_revisions = false
+policy_files = ["examples/tinyraid/__main__.py", "examples/tinyraid/game.py", "examples/tinyraid/adapter.py", "examples/tinyraid/probes.py"]
+```
+
+`method` accepts `random` or `grid`. The shown settings are defaults except `method`, the required holdout set and `policy_files`, and the explicit policies. `policy_files` must name the game's executor and policy sources relative to the project root; M5 requires a nonempty list of files inside that root and freezes their hashes along with the bridge, decider, and runtime sources. Policies otherwise come from `batch.deciders` and must be offline `rule`, `mock`, or `random`. The holdout set must contain at least `min_runs` unique integers and be disjoint from **all** configured batch seeds, even search seeds a smaller batch does not use. The admission check compares the worst-case baseline/search/holdout run count against the cap before creating output or starting children. `--max-runs` can lower `balance.max_runs`, never raise it. Changing relevant settings requires new approval receipts.
+
+Use the same reviewed document and receipt paths as the M4 workflow, with the extra mode flag:
+
+```text
+shakedown campaign --config CONFIG --campaign CAMPAIGN_JSON --approval CAMPAIGN_RECEIPT --targets TARGETS_JSON --targets-approval TARGETS_RECEIPT --output OUTPUT_DIR --approved --optimize
+```
+
+Uppercase values are operator-supplied paths, not literal filenames. Use a new output directory. `balance_run.json` retains the run budget, hashes, phases, revisions, selection, gates, and proposal paths. Search and holdout metrics are separate. A completed campaign can have no proposal because its gate was rejected or unmeasured; inspect the gate rather than treating CLI success as a balance verdict.
 
 ## 7.3 Holding the bot fixed
 
 While comparing tuning values, keep the bot policy fixed: decider kind, model ID, profile instructions, and executor profile. If the bot changes while tuning changes, nobody can tell which moved the metrics. Changing profile instructions starts a new campaign.
+
+M5 records a policy fingerprint and checks that approved documents, configuration, defaults, instruction files, `policy_files`, declared fixtures, and bridge/protocol/decider sources have not changed between phases. It runs the same named offline policies, duration, and approved profile instructions for baseline and candidates. A fingerprint does not establish the behavior of undeclared external game code; list all relevant game policy sources and keep the runtime fixed.
 
 The prototype applied this rule to its own changes: after adding `recent` outcomes, the grenade reflex, and looting, it stopped comparing new runs with the overnight run.
 
@@ -47,18 +79,18 @@ Bots that are tuned for will drift from human play. Three defenses:
 
 - Several profiles (for example cautious, aggressive, looter) rather than one.
 - The same telemetry on human sessions, so distributions can be compared (experiment E5).
-- **Policy sensitivity.** If the `rule` decider and a model decider disagree about which tuning candidate is better, the candidate is marked policy-sensitive and is not proposed until human play confirms it.
+- **Policy sensitivity.** M5 requires at least two distinct tested policies for a proposal. If one improves the target-distance score while another worsens it, the candidate is rejected as policy-sensitive. Agreement between `rule` and `mock`, for example, establishes only those policies' observed preference. Human play and hosted-model agreement remain unmeasured; a single policy cannot certify sensitivity.
 
 ## 7.4 The proposal gate
 
 A candidate becomes a proposed change only if all of these hold on holdout seeds:
 
-- Its distance outside the target ranges, summed over targets and profiles, is at most (1 − `min_gain`) of the baseline's. The prototype default was `min_gain` = 0.2.
-- Its oracle rate is no higher than the baseline's.
-- Every group has at least `min_runs` runs.
-- It is not policy-sensitive.
+- Its raw distance outside the target ranges, summed over expanded target/profile/map cells and tested policies, is at most (1 − `min_gain`) of the baseline's, and strictly improves it. The default is `min_gain = 0.2`. A zero-distance baseline produces no change proposal.
+- Its oracle rate is no higher than the baseline's in every profile/map/policy group. Oracle measurements must cover the full group denominator.
+- Every baseline/candidate group has at least `min_runs` valid runs, and every target metric has at least that many measured observations. Missing, duplicate, censored, nonfinite, or insufficient evidence stays `unmeasured`; invalid executions block the proposal.
+- At least two named policies have measured scores and no observed preference reversal.
 
-The output is a patch to the game's defaults plus a report with the scores and the per-target values. If the project opts in to automatic application (section 5.4), Shakedown builds and runs the game's tests before and after the edit and restores every file on any new failure.
+A passing candidate writes `proposals/pNNN/defaults.patch`, `tuning.json`, and `proposal.json`. The receipt includes the source hash, numeric default changes, and gate details with scores and per-target values. The patch targets the documented key table; the source file stays unchanged. Bootstrap intervals are descriptive evidence, not a statistical guarantee of gain. Automatic application, build/test/rollback, and committing defaults are future design and are not implemented commands.
 
 ## 7.5 What the targets should not be
 

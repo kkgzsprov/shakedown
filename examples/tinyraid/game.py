@@ -10,7 +10,9 @@ from __future__ import annotations
 from collections import Counter, deque
 from dataclasses import dataclass
 import heapq
+import json
 import math
+from pathlib import Path
 import random
 
 
@@ -25,11 +27,43 @@ SCENARIOS = (
     "standard", "stuck", "thin_wall", "ammo_underflow", "heal_overflow",
     "door_no_key", "grenade", "extraction", "vision", "corner_pocket",
 )
-TUNING_KEYS = {
-    "player.speed": {"type": "float", "min": 1.0, "max": 5.0, "default": 3.0},
-    "guard.damage": {"type": "float", "min": 1.0, "max": 20.0, "default": 8.0},
-    "guard.vision": {"type": "float", "min": 3.0, "max": 16.0, "default": 10.0},
-}
+
+
+def _tuning_number(value) -> bool:
+    return type(value) is int or type(value) is float and math.isfinite(value)
+
+
+def load_tuning_keys(path: Path) -> dict:
+    """Load the game's bounds and defaults from its exposed key table."""
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"duplicate tuning table key: {key}")
+            value[key] = item
+        return value
+
+    def reject_constant(value):
+        raise ValueError(f"nonfinite tuning table value: {value}")
+
+    data = json.loads(Path(path).read_text(encoding="utf-8"), object_pairs_hook=unique,
+                      parse_constant=reject_constant)
+    if type(data) is not dict or set(data) != {"keys"} or type(data["keys"]) is not dict or not data["keys"]:
+        raise ValueError("tuning table must contain a nonempty keys object")
+    for key, spec in data["keys"].items():
+        if (not key or "\x00" in key or type(spec) is not dict
+                or not {"type", "min", "max", "default"} <= spec.keys()
+                or type(spec["type"]) is not str or spec["type"] not in {"int", "float"}):
+            raise ValueError(f"invalid tuning specification: {key}")
+        values = [spec[field] for field in ("min", "max", "default")]
+        if (not all(_tuning_number(value) for value in values)
+                or spec["type"] == "int" and any(type(value) is not int for value in values)
+                or not spec["min"] <= spec["default"] <= spec["max"]):
+            raise ValueError(f"invalid tuning bounds or default: {key}")
+    return data["keys"]
+
+
+TUNING_KEYS = load_tuning_keys(Path(__file__).with_name("tuning_keys.json"))
 
 
 def distance(a, b) -> float:
@@ -115,7 +149,8 @@ class Game:
             if key not in TUNING_KEYS:
                 raise ValueError(f"unknown tuning key: {key}")
             spec = TUNING_KEYS[key]
-            if type(value) not in (int, float) or not math.isfinite(value) or not spec["min"] <= value <= spec["max"]:
+            if (not _tuning_number(value) or spec["type"] == "int" and type(value) is not int
+                    or not spec["min"] <= value <= spec["max"]):
                 raise ValueError(f"out-of-range tuning value: {key}")
             self.tuning[key] = value
         self.seed, self.map_name, self.duration = seed, map_name, duration

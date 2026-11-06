@@ -4,7 +4,7 @@
 
 ## 5.1 플래너 백엔드
 
-M4 플래너는 게임 실행 사이에 명령줄 LLM 또는 오프라인 `mock` 백엔드로 구조화된 초안을 만든다. 게임 실행 안에서는 호출하지 않는다. 기준선 캠페인 실행은 M4 범위이며, 최적화기·반복 밸런스 루프·기본값 변경은 M5 설계다.
+M4 플래너는 게임 실행 사이에 명령줄 LLM 또는 오프라인 `mock` 백엔드로 구조화된 초안을 만든다. 게임 실행 안에서는 호출하지 않는다. M5는 `campaign --optimize`로 제한된 수치 탐색과 보류 시드 제안 검증을 추가한다. 기본값 자동 적용은 미구현이다.
 
 | 백엔드 | 호출 | 참고 |
 |---|---|---|
@@ -30,7 +30,7 @@ Claude의 `--tools ""`는 내장 도구를 제거하며 MCP에는 별도의 빈 
 
 플래너가 플레이에 영향을 주는 수단은 프로필 지시문뿐이다. 지시문은 한 실행의 모든 결정에서 디사이더(decider)의 질문 앞에 붙는다. 길이는 프로필당 600자로 제한하며, 지시문으로 후보(candidate)나 새 행동을 추가할 수 없다. 스키마는 길이만 검사하므로, 승인 전에 사람이 `campaign.json`을 읽는다.
 
-제안 범위는 설정된 키 표의 제약을 만족해야 채택한다. M4는 제안을 기록하되 수치 탐색이나 기본값 적용을 하지 않는다. 향후 루프의 범위 잘라 내기와 수정 이력은 M5 범위다.
+제안 범위는 설정된 키 표의 제약을 만족해야 채택한다. M5 루프는 수정 범위를 사람이 승인한 캠페인의 탐색 범위로도 제한하며, 잘라 낸 내용을 `revision.json`에 기록하고 새로운 튜닝 키를 거부한다. 수정은 프로필 지시문이나 고정 정책을 바꿀 수 없다.
 
 ## 5.3 플래너가 정하지 않는 것
 
@@ -45,7 +45,7 @@ Claude의 `--tools ""`는 내장 도구를 제거하며 MCP에는 별도의 빈 
 |---|---|---|
 | 캠페인 실행 전 | 목표·캠페인 승인 영수증과 실행 시 `--approved` | 지시문과 범위가 실행 방향을 정한다 |
 | 플래너 비용 지출 전 | 호출 전에 예산 원장에 금액 예약 | 실패한 시도와 미확인 비용을 회계에서 누락하지 않는다 |
-| 기본값 변경 전 | M4 명령은 기본값을 적용하지 않는다 | 패치 생성과 적용은 M5 범위다 |
+| 기본값 변경 전 | M5는 검토용 패치를 쓰며 어떤 명령도 적용하지 않는다 | 밸런스 변경은 사람이 내릴 디자인 결정이다 |
 
 `approve`는 결과물과 설정 내용에 연결된 운영자의 명시적 승인을 기록한다. 캠페인 승인은 승인된 목표에도 연결된다. 영수증은 서명이 없어 승인자 신원을 인증하지 않으며, 내용 변경 시 재승인이 필요하다. 프로토타입의 직접 기본값 변경은 M4에 포함하지 않는다.
 
@@ -60,10 +60,10 @@ shakedown approve {targets,campaign} --config PATH --artifact PATH --receipt PAT
   [--targets PATH --targets-approval PATH]
 
 shakedown campaign --config PATH --campaign PATH --approval PATH
-  --targets PATH --targets-approval PATH --output DIR --approved [--max-runs N]
+  --targets PATH --targets-approval PATH --output DIR --approved [--max-runs N] [--optimize]
 ```
 
-줄바꿈은 명령 문법을 설명하기 위한 것이며 셸의 줄 연결 표시는 아니다. `--input NAME=PATH`는 반복할 수 있다. 필수 입력 이름은 `targets`·`campaign`의 `design_notes`, `revise`·`report`의 `metrics`, `bug`의 `run`이다. 출력은 차례로 `targets.json`, `campaign.json`, `revision.json`, `bug_draft.json`, `report.json`과 `report.md`다. 캠페인 작성과 승인은 목표 및 목표 승인 영수증을 사용한다. `--max-runs`는 기준선 한 라운드를 제한하며 최적화를 켜지 않는다.
+줄바꿈은 명령 문법을 설명하기 위한 것이며 셸의 줄 연결 표시는 아니다. `--input NAME=PATH`는 반복할 수 있다. 필수 입력 이름은 `targets`·`campaign`의 `design_notes`, `revise`·`report`의 `metrics`, `bug`의 `run`이다. 출력은 차례로 `targets.json`, `campaign.json`, `revision.json`, `bug_draft.json`, `report.json`과 `report.md`다. 캠페인 작성과 승인은 목표 및 목표 승인 영수증을 사용한다. `--optimize`가 없으면 기준선 한 라운드를 실행하며, 이 옵션을 켜면 `[balance]` 설정으로 M5 루프를 실행한다. `--max-runs`는 설정된 실행 상한을 더 낮출 수 있다. 7장을 참고한다.
 
 `[planner]` 설정 키는 `backend`, `budget_usd`, `call_budget_usd`, `max_calls`, `timeout_s`, `model`, `command`, `codex_mode`, `ledger`다. `codex_mode`는 `disabled` 또는 `restricted`다. 실제 호출의 모델은 명시적으로 선택하며 예제에서 임의의 최신 모델이나 fallback을 지정하지 않는다. `plan`의 예산·원장 옵션은 해당 설정을 호출 단위로 덮어쓴다.
 
@@ -71,16 +71,18 @@ shakedown campaign --config PATH --campaign PATH --approval PATH
 
 ## 5.5 에이전트 스킬
 
-계획된 M6의 `skill/shakedown/`은 Claude Code나 Codex 같은 코딩 에이전트가 쓸 수 있게 Shakedown을 묶는 패키지다. 스킬을 실행하는 에이전트가 곧 플래너이며, 다음 구성을 제공할 예정이다.
+M6 [`skill/shakedown/`](../../skill/shakedown/SKILL.md)은 Claude Code나 Codex 같은 코딩 에이전트의 Shakedown 작업 흐름을 제공한다. 스킬을 실행하는 에이전트가 플래너이며, 패키지는 다음을 제공한다.
 
 | 구성 | 내용 |
 |---|---|
 | `SKILL.md` | Shakedown을 쓸 때, 3계층 모델, 명령 목록, 승인 게이트, 절대 하면 안 되는 일(밸런스 변경 커밋, 파일에 키 저장, 공정성 판정) |
 | 어댑터(adapter) 가이드 | 3장의 체크리스트를 에이전트가 만들 순서대로 정렬한 것: 헤드리스 모드 → 텔레메트리 → 입력 기록(input recording)과 재생 → 관측 → 후보 → 실행기(executor) → 결정 시점(decision point) → 오라클 |
-| 어댑터 템플릿 | C++, C#, GDScript, Python용 프로토콜 루프 뼈대 코드와 C7 누출 없음(no-leak) 테스트 템플릿 |
+| 어댑터 템플릿 | C++17, C#, GDScript, Python 전송 골격과 게임 소유 C7 가시성 픽스처 패턴. 게임 입력·재생 연동과 적합성 검사는 여전히 필요하다. |
 | 스크립트 | `shakedown check-adapter`, `run`, `explore`, `triage`, `campaign` |
 
 스킬에는 실행기가 들어 있지 않다. 실행기는 게임마다 다른 코드이기 때문이다(3장). 실행기 작성은 스킬이 에이전트에게 맡기는 작업이다. 에이전트는 `check-adapter`로 결과가 동작함을 증명한다. 어댑터는 검사 C1~C3이 통과해야 완료로 친다(3.10절).
+
+`examples/switchyard/`는 두 번째 이산 버튼 어댑터와 스킬 검증 흐름을 제공한다. 배포 어댑터는 스킬을 읽기 전에 구현했으므로 그 검증과 블라인드 생성은 구분한다. 별도 새 컨텍스트 실험은 기존 어댑터를 읽지 않고 스킬·게임 규칙·프로토콜·설정만으로 독립 어댑터를 작성했다. seed 7·depot·courier 범위에서 C1~C6이 통과해 지원 기준 C1~C3을 만족했지만 C7은 `unmeasured`였다. 템플릿 컴파일, 전송 동작, 게임 적합성, 더 넓은 블라인드 일반화는 별도 주장이다. 언어별 검증 범위는 스킬의 안내를 확인한다.
 
 결정마다 이산 행동을 고르는 게임에는 실행기가 거의 필요 없다. 턴제, 카드, 퍼즐, 메뉴 중심 게임이 여기에 속하며, 후보 하나가 버튼 하나나 API 호출 하나에 대응한다. 이런 게임을 위해 템플릿에는 `candidate → input` 표 하나로 처리하는 "얇은 실행기(thin executor)" 모드가 있다.
 

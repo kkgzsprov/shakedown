@@ -61,6 +61,13 @@ def run_approved_campaign(config, campaign, approval, output_dir, *, approved=Fa
             plans.append((f"e{index:04d}/p{profile_index:04d}", experiment["id"], derived, count))
     if total > max_runs:
         raise ValueError(f"campaign plans {total} runs, exceeding max_runs={max_runs}")
+    hosted = None
+    if "jev" in config.backends:
+        from ..orchestrate import hosted_runtime
+        directory = Path(output_dir).resolve()
+        if directory.exists():
+            raise ValueError("campaign output already exists")
+        hosted = hosted_runtime(config, directory.parent / (directory.name + ".decider-budget.json"), config.workers)
     # Everything above this line is read-only, including both approval checks.
     targets_document = json.loads(Path(targets).read_text(encoding="utf-8"))
     receipt = {"v": 1, "status": "running", "total_runs": total, "runs": [], "batches": [],
@@ -78,7 +85,7 @@ def run_approved_campaign(config, campaign, approval, output_dir, *, approved=Fa
                      "profile": derived.profiles[0], "planned_runs": count, "status": "running"}
             receipt["batches"].append(batch)
             write_json(receipt_path, receipt)
-            manifest = run_batch(derived, output_dir / relative)
+            manifest = run_batch(derived, output_dir / relative, **({"hosted": hosted} if hosted else {}))
             batch.update(status=manifest["status"],
                          valid_runs=manifest.get("valid_runs", 0),
                          invalid_runs=manifest.get("invalid_runs", 0))

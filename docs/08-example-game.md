@@ -4,7 +4,7 @@
 
 `examples/tinyraid/` is a small real-time game that ships with Shakedown. It has three jobs: show a complete adapter, give contributors something to run with no engine installed, and act as a benchmark with known bugs so that changes to Shakedown can be measured.
 
-M1 implements the headless game, adapter, local rule, input recording/replay, direct decision-tape replay, and optional PNG frames. M2 adds batches and conformance checks. M3 adds controlled input-workflow probes, anomaly evidence, verified triage, clips, and the benchmark below.
+M1 implements the headless game, adapter, local rule, input recording/replay, direct decision-tape replay, and optional PNG frames. M2 adds batches and conformance checks. M3 adds controlled input-workflow probes, anomaly evidence, verified triage, clips, and the benchmark below. M5 adds a separate planted-target balance benchmark; M6 adds Switchyard as a second, discrete-button adapter.
 
 ## 8.1 The game
 
@@ -104,3 +104,26 @@ python -m examples.tinyraid --seed 7 --duration 12 --frame-dir runs/tinyraid-fra
 | `guard.vision` | 10.0 m | 3.0–16.0 |
 
 M3 records the optional `probe` name and actual startup scenario. Older seven-field recording configurations remain accepted, but strict game-event hashes still apply. Earlier telemetry or engine semantics are not automatically byte-compatible; an assertion mismatch is a failure, not a claimed migration.
+
+## 8.6 Planted balance target
+
+`bench tinyraid-balance` is a separate fixed-plan numeric-search test, not the M3 fault benchmark:
+
+```bash
+python -m shakedown bench tinyraid-balance --output runs/tinyraid-balance-bench
+```
+
+It freezes the seed sets in `examples/tinyraid/m5-seeds.json`, searches only `player.speed`, and holds map, duration, instructions, source hashes, and policies fixed. The primary `rule` policy must recover the synthetic loot target 55–60 on holdout seeds. `mock` independently checks preference reversal and may remain outside the target range; a passing gate does not claim all-policy target attainment or human balance. The benchmark writes `benchmark.json` plus the normal campaign evidence and un-applied proposal patch.
+
+The search/holdout split and planted objective are qualification design inputs, not evidence of a passing run. Inspect `gate_passed`, primary-rule target distances, complete samples, oracle comparisons, and the frozen selection in the retained output. A weaker target whose baseline already satisfies the range must produce no gain proposal. Tinyraid reads `tuning_keys.json` as its runtime default source; benchmark proposals never edit it.
+
+## 8.7 Switchyard and skill verification
+
+`examples/switchyard/` is a deterministic turn-based parcel route puzzle on `depot` and `loop`, with `courier` and `careful` profiles. Its thin executor passes each selected action through an ordinary button to `Game.tick`; input replay reconstructs startup state without the adapter. The configuration includes an oracle fixture and a hidden-traffic visibility check.
+
+```bash
+python -m shakedown check-adapter --config examples/switchyard/shakedown.toml --output runs/switchyard-checks
+python -m shakedown run --config examples/switchyard/shakedown.toml --output runs/switchyard-batch
+```
+
+Use new output directories. These checks retain separate C1–C7 verdicts; the batch covers both maps, both profiles, three seeds, and `rule`/`mock`. This second example exercises the [agent skill](../skill/shakedown/SKILL.md) verification workflow. The shipped implementation preceded the skill read. In a separate fresh-context trial, an agent read only the skill, game rules, protocol, and configuration, then wrote an independent adapter without reading the shipped adapter. Seed 7/depot/courier passed C1–C6, meeting the minimum C1–C3 criterion; C7 remained `unmeasured` and the overall seven-check verdict therefore remained unmeasured. This is scoped blind-adapter evidence, not broad unseen-game generalization. Neither the puzzle nor conformance establishes real-time aiming, human-like play, or visual quality.

@@ -2,7 +2,7 @@
 
 # Shakedown design documents
 
-Status: M0–M3 are implemented; M4 and later remain design. These documents describe what is and will be built. Chapter 8 covers the runnable tinyraid example and controlled benchmark; the roadmap (chapter 9) says what comes next.
+Status: M0–M7 have implementation paths. Live planner/provider qualification, broader unseen-game generalization, and human-play validation remain separate gaps. These documents distinguish implementation from those outcomes. Chapter 7 covers the balance search and holdout proposal gate; chapter 8 covers both runnable example games and controlled benchmarks. Check actual validation evidence before claiming a milestone or platform passed.
 
 | Chapter | Read it for |
 |---|---|

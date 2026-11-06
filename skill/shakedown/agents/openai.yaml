@@ -1,0 +1,4 @@
+interface:
+  display_name: "Shakedown"
+  short_description: "Game adapters, replayable QA and balance evidence"
+  default_prompt: "Use $shakedown to add and verify a deterministic playtesting adapter for this game."

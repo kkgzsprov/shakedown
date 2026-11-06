@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import replace
+from decimal import Decimal
 import hashlib
 import itertools
 import json
@@ -14,7 +15,7 @@ import time
 
 from .aggregate import aggregate_batch
 from .config import ProjectConfig
-from .orchestrate import digest, run_case, write_json
+from .orchestrate import digest, hosted_runtime, run_case, write_json
 from .processes import ProcessControl
 from .protocol import canonical_json
 
@@ -156,6 +157,11 @@ def explore(config: ProjectConfig, output_dir: Path, *, max_runs: int = 60,
     keys = _noise_keys(config, tuning_noise)
     plan = _sample_plan(config, max_runs, seed, tuning_noise, steer, variants, keys)
     output_dir = Path(output_dir).resolve()
+    hosted = None
+    if "jev" in config.backends:
+        if output_dir.exists():
+            raise ValueError("exploration output already exists")
+        hosted = hosted_runtime(config, output_dir.parent / "decider-budget.json", 1)
     output_dir.mkdir(parents=True, exist_ok=False)
     (output_dir / "runs").mkdir()
     manifest = {"v": 1, "status": "running", "config_path": str(config.path),
@@ -172,6 +178,10 @@ def explore(config: ProjectConfig, output_dir: Path, *, max_runs: int = 60,
     stop_reason = "run_budget"
     try:
         for spec in plan:
+            if spec["decider"] == "jev" and (hosted.ledger.remaining_calls() < 1 or
+                    Decimal(hosted.ledger.remaining()) < Decimal(str(hosted.call_budget))):
+                stop_reason = "decider_budget"
+                break
             remaining = None if deadline is None else deadline - time.monotonic()
             if remaining is not None and remaining <= 0:
                 stop_reason = "deadline"
@@ -196,7 +206,8 @@ def explore(config: ProjectConfig, output_dir: Path, *, max_runs: int = 60,
                 record = run_case(active_config, output_dir / "runs" / spec["id"],
                                   seed=spec["seed"], map_name=spec["map"], profile=spec["profile"],
                                   decider=spec["decider"], tuning=spec["tuning"],
-                                  extra_args=tuple(spec["extra_args"]), control=control)
+                                  extra_args=tuple(spec["extra_args"]), control=control,
+                                  **({"hosted": hosted} if hosted is not None else {}))
             except KeyboardInterrupt:
                 control.cancel()
                 record = _failed_record(config, output_dir, spec, "cancelled")
@@ -221,7 +232,8 @@ def explore(config: ProjectConfig, output_dir: Path, *, max_runs: int = 60,
     for spec in manifest["planned_runs"]:
         if spec["id"] not in completed:
             manifest["runs"].append(_failed_record(config, output_dir, spec, "cancelled"))
-    skipped_reason = "not_started_interrupted" if stop_reason == "interrupted" else "not_started_deadline"
+    skipped_reason = ("not_started_interrupted" if stop_reason == "interrupted" else
+                      "not_started_budget" if stop_reason == "decider_budget" else "not_started_deadline")
     manifest["skipped_runs"] = [{"id": spec["id"], "reason": skipped_reason}
                                 for spec in plan if spec["id"] not in attempted]
     write_json(output_dir / "batch.json", manifest)
@@ -246,6 +258,8 @@ def explore(config: ProjectConfig, output_dir: Path, *, max_runs: int = 60,
                               for cell in itertools.product(config.maps, config.profiles,
                                                             config.backends,
                                                             [item["name"] for item in variants])])
+    if hosted is not None:
+        manifest["hosted"] = hosted.summary()
     write_json(output_dir / "batch.json", manifest)
     write_json(output_dir / "exploration.json", manifest)
     return manifest

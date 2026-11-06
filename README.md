@@ -2,21 +2,21 @@
 
 # Shakedown
 
-An AI playtesting pipeline for games, with an offline test path. A game-side executor plays through the ordinary input path, and Shakedown records decisions and inputs so supported deterministic failures can be reproduced. The M4 planner drafts structured artifacts between runs and executes an approved baseline campaign.
+An AI playtesting pipeline for games, with an offline test path. A game-side executor plays through the ordinary input path, and Shakedown records decisions and inputs so supported deterministic failures can be reproduced. The planner drafts structured artifacts between runs; approved campaigns can measure a baseline or search tuning values and evaluate held-out proposals.
 
-> Status: early. M0-M3 provide protocol and offline deciders, tinyraid and replay, isolated batches, adapter checks, and the QA path. M4 adds planner drafts, budget accounting, approval receipts, and one baseline campaign round. Live CLI qualification remains pending; M5 and later remain design. See [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
+> Status: early. M0-M7 have implementation paths: protocol and offline deciders, two example games, replay, isolated batches, QA, planner drafts, approved balance search, an agent skill, and the optional Jev hosted decider. Live planner/provider qualification, broader unseen-game generalization, and human-play validation remain gaps. No command applies or commits proposed defaults. See [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
 
 ## How it works
 
-The full design has three layers, each working at a different speed. The M4 planner runs between batches; gameplay still uses offline deciders:
+The full design has three layers, each working at a different speed. The planner runs between batches; gameplay uses offline deciders by default and can opt into the configured Jev backend:
 
 - **Planner (System 2).** An LLM such as Claude Code or Codex writes the test campaign between batches of runs. It picks player profiles, states hypotheses, and sets the tuning ranges to explore. It is never called during play.
 - **Decider (System 1).** A fast decision model chooses one tactic from a list of legal options that your game builds. It does not compute coordinates or aim. A random baseline, a game rule, and a tape replayer work with no network.
-- **Executor.** Code in your game turns the chosen tactic into keyboard and mouse input every frame, through the same input path a human player uses. It is part of a per-game adapter that the bundled agent skill helps you write.
+- **Executor.** Code in your game turns the chosen tactic into keyboard and mouse input every frame, through the same input path a human player uses. It is part of a per-game adapter; the bundled [Shakedown skill](skill/shakedown/SKILL.md) provides guides and transport skeletons for writing one.
 
 Game time pauses while the decider thinks, so model latency never changes the outcome. Each answer is written to a tape, so any run can be replayed exactly without calling the model again.
 
-Code-level oracles check stuck players, teleports, and out-of-range stats; the runner records crashes and other invalid attempts. Triage distinguishes reproduced findings from missing or failed evidence and can make a replay-backed clip. The optimizer and balance-proposal loop remain planned.
+Code-level oracles check stuck players, teleports, and out-of-range stats; the runner records crashes and other invalid attempts. Triage distinguishes reproduced findings from missing or failed evidence and can make a replay-backed clip. The balance loop keeps search and holdout seeds separate and writes proposals for human review.
 
 ## Requirements
 
@@ -99,7 +99,26 @@ python -m shakedown campaign --config CONFIG --campaign CAMPAIGN_JSON --approval
 
 The uppercase values are paths supplied by the operator. The first plan writes `DRAFT_DIR/targets.json`; the second writes `CAMPAIGN_DIR/campaign.json`. Review each artifact before creating its approval receipt. Receipts bind approval to the artifact and configuration contents; they are unsigned operator assertions, not authenticated signatures. Changing approved content requires a new receipt.
 
-An M4 campaign executes one baseline round. Numeric optimization, iterative search, holdout qualification of a proposed balance change, and applying new defaults remain M5 work. Planner calls reserve a configured amount in a ledger before execution; missing cost data consumes the entire reservation. These reservations bound Shakedown's admitted calls, not the provider's final bill. Codex requires explicit `codex_mode = "restricted"` opt-in and does not offer a verified tool-free guarantee. Manual calls to the installed CLI backends require a separately authorized budget; this milestone's offline validation does not establish live-provider behavior.
+Without `--optimize`, a campaign executes one baseline round. Add `--optimize` to run the M5 balance loop using an approved campaign and a `[balance]` configuration. It fixes policy and profile instructions, ranks candidates on search seeds, freezes the selected candidates, then evaluates them once on disjoint holdout seeds. Every experiment must use the campaign's shared search ranges. At least two tested policies are needed to authorize a proposal; agreement covers those policies only. [Chapter 7](docs/07-balance-loop.md) lists the settings, gate, and output files.
+
+Passing candidates produce `defaults.patch`, `tuning.json`, and `proposal.json`; no command applies or commits them. The patch changes documented defaults in the tuning key table. Tinyraid reads that table as its runtime default source; other adapters must establish their own integration before a person applies a patch.
+
+Planner calls reserve a configured amount in a ledger before execution; missing cost data consumes the entire reservation. These reservations bound Shakedown's admitted calls, not the provider's final bill. Codex requires explicit `codex_mode = "restricted"` opt-in and does not offer a verified tool-free guarantee. Manual calls to the installed CLI backends require a separately authorized budget; offline validation does not establish live-provider behavior.
+
+## Second adapter and agent skill
+
+`examples/switchyard/` is a small turn-based route puzzle with a thin executor: each candidate becomes an ordinary button. Its separate configuration exercises adapter checks and offline batch runs:
+
+```bash
+python -m shakedown check-adapter --config examples/switchyard/shakedown.toml --output runs/switchyard-checks
+python -m shakedown run --config examples/switchyard/shakedown.toml --output runs/switchyard-batch
+```
+
+Use new output directories. The shipped adapter preceded the skill read, so its verification alone does not establish blind generation. A separate fresh-context trial read only the skill, game rules, protocol, and configuration and wrote an independent adapter without reading the shipped one. It passed C1–C6 on seed 7, `depot`, `courier`, meeting the minimum C1–C3 support criterion; C7 remained `unmeasured`. This does not establish broad unseen-game generalization or a C7 pass. The [skill](skill/shakedown/SKILL.md) includes an adapter guide, thin-executor guide, Python/C++17/C#/GDScript transport skeletons, a visibility fixture pattern, and a portable command wrapper. These starting points do not replace game conformance.
+
+## Optional hosted decisions
+
+The M7 `jev` backend sends fixed-choice questions through the bridge, with an exact model pin, a shared cache/ledger, bounded retries, and latency/fallback/usage receipts. Keep the API key in the configured environment variable; it is removed from the game's environment. [Chapter 4](docs/04-deciders.md) documents settings and commands. Local HTTP fixtures establish transport behavior; actual hosted inference, production latency, and actual billing remain unmeasured. Token-based cost estimates and conservative reservations do not establish the provider's charge.
 
 ## License
 

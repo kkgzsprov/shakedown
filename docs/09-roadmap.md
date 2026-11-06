@@ -6,7 +6,7 @@
 
 Each milestone ends with a check that passes on CI with no network and no key.
 
-Current implementation: M0-M3 and the M4 implementation slice. M4 adds schema-checked planner drafts, offline mock and CLI backends, budget reservations, content-bound approval receipts, and single-round baseline campaigns. Offline validation and manual live-provider qualification are separate gates; no paid CLI calls have been used to establish this milestone. M5 and later remain planned. Local validation and current-commit CI are also separate evidence; inspect the actual run before claiming another platform passed.
+Current implementation: M0–M7 paths. M4 adds structured planning, approval, and budget accounting; M5 adds numeric search, frozen holdout gates, and reviewable patches; M6 adds the agent skill and second example adapter; M7 adds Jev HTTP decisions. Implementation, offline fixtures, live providers, scoped blind adaptation, and human-play validation are separate claims. Live planner/provider calls have not established production behavior here. Local validation and current-commit CI are also separate evidence; inspect the actual run before claiming another platform passed.
 
 | Milestone | Contents | Done when |
 |---|---|---|
@@ -15,11 +15,11 @@ Current implementation: M0-M3 and the M4 implementation slice. M4 adds schema-ch
 | M2 Batch runs | `shakedown.toml`, orchestrator, workers, aggregation, `check-adapter` | 60-run batch on tinyraid produces `metrics.json` with intervals. `check-adapter` reports C1 to C7. |
 | M3 QA path | Exploration, anomalies, triage, clips | `shakedown bench tinyraid` catches each oracle and anomaly bug alone and reproduces it, on held-out seeds |
 | M4 Planner | Planner steps and schemas, `claude-cli`, restricted opt-in `codex-cli`, and `mock`; budget ledger, approval receipts, one baseline campaign round | Offline schema, semantic, budget, approval, subprocess-fixture, and mock campaign tests pass. Both real CLI backends still require separately budgeted manual schema qualification; restricted Codex is not certified tool-free. |
-| M5 Balance | Key table, optimizer, campaign loop, holdout gate, patch output | A planted tuning target on tinyraid is recovered within its range on holdout seeds |
-| M6 Skill | `skill/shakedown/`, adapter templates, thin-executor mode | An agent with the skill writes a passing adapter for a second small game that it has not seen before |
-| M7 Hosted decider | `jev` backend, cache, budget, invalid-run rules | Latency, cost, and fallback reported for a tinyraid batch |
+| M5 Balance | Implemented key-table defaults, random/grid optimizer, bounded campaign loop, holdout gate, and reviewable patch output | Qualify a planted tinyraid target on untouched holdout seeds; gate and loop tests must cover missing evidence, policy disagreement, budgets, and stale approvals. Implementation alone is not this qualification evidence. |
+| M6 Skill | Implemented `skill/shakedown/`, transport skeletons, adapter guides, wrapper, and Switchyard thin-executor example | Shipped-adapter conformance and a separate fresh-context independent adapter are distinct evidence. The trial met C1–C3 (also C4–C6) on seed 7/depot/courier; C7 was unmeasured. Broader unseen-game generalization remains unproven. |
+| M7 Hosted decider | Implemented pinned `jev` HTTP backend, shared cache/budget/concurrency, bounded retries, and invalid-run receipts | Local HTTP fixtures verify the transport path; live inference, production latency, actual charge, and model-value comparisons remain unmeasured. |
 
-The M4 implementation can be validated with mock metrics and subprocess fixtures without a paid service. Its real CLI backend qualification is a separate manual gate with an explicit call budget. M7 remains last; all earlier gameplay deciders work offline. M4 does not implement M5 numeric optimization, iterative campaign search, holdout qualification of balance changes, or default application.
+M4 can be validated with mock metrics and subprocess fixtures without a paid service. Its real CLI backend qualification is a separate manual gate with an explicit call budget. M5 compares only its named offline policies; this does not establish agreement with hosted models or human play. M7's token estimates and reservation ledger do not establish the provider's actual bill. No implemented command automatically applies or commits proposed defaults.
 
 ## 9.2 Experiments before a 1.0 release
 

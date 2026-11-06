@@ -9,7 +9,7 @@ import subprocess
 import threading
 import time
 
-from .deciders import Decider
+from .deciders import Decider, DeciderError
 from .deciders.tape import TapeDivergence
 from .processes import ProcessControl, close_process, start_process, terminate_process
 from .protocol import (
@@ -27,6 +27,8 @@ class _Run:
     sources: Counter = field(default_factory=Counter)
     contract_error: str | None = None
     divergence: str | None = None
+    hosted_error: str | None = None
+    hosted: dict = field(default_factory=dict)
 
     def check_order(self, message: dict) -> None:
         if message["type"] == "hello":
@@ -54,6 +56,9 @@ def _summary(run: _Run, name: str, exit_code: int | None, timed_out: bool) -> di
         reasons.append("contract_error")
     if run.divergence is not None:
         reasons.append("divergence")
+    if run.hosted_error is not None:
+        reasons.append("hosted_error")
+    reasons.extend(run.hosted.get("invalid_reasons", []))
     if timed_out:
         reasons.append("wall_timeout")
     if exit_code == 0 and run.end is None:
@@ -63,7 +68,9 @@ def _summary(run: _Run, name: str, exit_code: int | None, timed_out: bool) -> di
         "decisions": decisions,
         "sources": dict(run.sources),
         "fallback_rate": fallback_rate,
-        "cost_usd": 0.0,
+        "cost_usd": run.hosted.get("cost_usd", 0.0),
+        "estimated_cost_usd": run.hosted.get("estimated_cost_usd"),
+        "hosted": run.hosted or None,
         "latency_ms_p50": _nearest_rank(run.latencies, 50),
         "latency_ms_p95": _nearest_rank(run.latencies, 95),
         "game": run.game,
@@ -132,6 +139,10 @@ def _read_game(process, log, tape, decider: Decider, instructions: str,
                 run.divergence = str(error)[:300]
                 terminate_process(process)
                 return EXIT_DIVERGENCE
+            except DeciderError as error:
+                run.hosted_error = str(error)[:300]
+                terminate_process(process)
+                return EXIT_CONTRACT
             try:
                 process.stdin.write(answer.encode("utf-8"))
                 process.stdin.flush()
@@ -196,6 +207,9 @@ def run_bridge(command: list[str], run_dir: Path, decider: Decider, *,
             try:
                 decider.close()
             finally:
+                summary_method = getattr(decider, "summary", None)
+                if summary_method is not None:
+                    run.hosted = summary_method()
                 if run_dir.is_dir():
                     summary = _summary(run, decider_name, exit_code, timed_out.is_set())
                     (run_dir / "bridge_summary.json").write_text(

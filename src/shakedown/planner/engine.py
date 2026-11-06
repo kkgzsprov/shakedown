@@ -92,6 +92,7 @@ def approval_context(config, targets=None) -> str:
                    "maps": config.maps, "profiles": config.profiles, "seeds": config.seeds,
                    "duration": config.duration, "backends": config.backends,
                    "instructions": config.instructions, "candidates": config.tuning_candidates,
+                   "balance": config.raw.get("balance"),
                    "keys": context(config)["tuning_keys"], "targets": targets})
 
 

@@ -193,7 +193,7 @@ def _source(config: ProjectConfig, batch_dir: Path, run_id: str,
                     raise ValueError("input-replay source has no original recording path")
             else:
                 inputs = None
-                expected_mode = "bridge" if metadata["decider"] in {"random", "mock"} else "rule"
+                expected_mode = "bridge" if metadata["decider"] in {"random", "mock", "jev"} else "rule"
                 if metadata["decider"] == "tape":
                     if type(mode) is not str or not mode.startswith("tape:") or not Path(mode[5:]).is_absolute():
                         raise ValueError("source tape mode has no absolute tape path")
@@ -260,7 +260,7 @@ def _reproduce(config: ProjectConfig, folder: Path, metadata: dict, rows: list[d
                   "tuning": metadata["tuning"]}
     decider = metadata["decider"]
     options = {"decider": "rule"}
-    if decider in {"mock", "random", "tape"}:
+    if decider in {"mock", "random", "tape", "jev"}:
         tape = source_dir / "decision_tape.jsonl"
         if decider == "tape" and not tape.is_file() and str(metadata.get("mode", "")).startswith("tape:"):
             tape = Path(metadata["mode"][5:])

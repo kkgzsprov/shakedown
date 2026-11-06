@@ -3,6 +3,7 @@
 import argparse
 import json
 import math
+import os
 from pathlib import Path
 import sys
 
@@ -32,9 +33,9 @@ def _seeds(value: str) -> list[int]:
 
 def _backends(value: str) -> list[str]:
     values = value.split(",")
-    if (any(item not in {"rule", "random", "mock"} for item in values)
+    if (any(item not in {"rule", "random", "mock", "jev"} for item in values)
             or len(set(values)) != len(values)):
-        raise argparse.ArgumentTypeError("deciders must be unique names: rule, random, mock")
+        raise argparse.ArgumentTypeError("deciders must be unique names: rule, random, mock, jev")
     return values
 
 
@@ -56,14 +57,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="shakedown")
     subparsers = parser.add_subparsers(dest="command", required=True)
     bridge = subparsers.add_parser("bridge", help="connect a game to a local decider")
-    bridge.add_argument("--decider", choices=("random", "mock", "tape"), required=True)
+    bridge.add_argument("--decider", choices=("random", "mock", "tape", "jev"), required=True)
+    bridge.add_argument("--config", type=Path, help="hosted decider configuration; required for jev")
     bridge.add_argument("--tape")
     bridge.add_argument("--seed", type=int, default=0)
     bridge.add_argument("--instructions", type=Path)
     bridge.add_argument("--wall-timeout", type=_positive_seconds)
     bridge.add_argument("--run-dir", type=Path, required=True)
     bridge.add_argument("game_command", nargs=argparse.REMAINDER)
-    batch = subparsers.add_parser("run", help="run an isolated offline batch and aggregate its evidence")
+    batch = subparsers.add_parser("run", help="run an isolated batch and aggregate its evidence")
     batch.add_argument("--config", type=Path, default=Path("shakedown.toml"))
     batch.add_argument("--output", type=Path, required=True)
     batch.add_argument("--workers", type=int)
@@ -95,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     triage.add_argument("--output", type=Path, required=True)
     triage.add_argument("--clips", action="store_true")
     benchmark = subparsers.add_parser("bench", help="measure the tinyraid fault-injection test bed")
-    benchmark.add_argument("game", choices=("tinyraid",))
+    benchmark.add_argument("game", choices=("tinyraid", "tinyraid-balance"))
     benchmark.add_argument("--output", type=Path, required=True)
     benchmark.add_argument("--split", choices=("search", "holdout"), default="holdout")
     benchmark.add_argument("--runs", type=int)
@@ -122,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     approval.add_argument("--approved", action="store_true")
     approval.add_argument("--targets", type=Path)
     approval.add_argument("--targets-approval", type=Path)
-    campaign = subparsers.add_parser("campaign", help="execute an approved single baseline round")
+    campaign = subparsers.add_parser("campaign", help="execute an approved baseline or balance search")
     campaign.add_argument("--config", type=Path, default=Path("shakedown.toml"))
     campaign.add_argument("--campaign", type=Path, required=True)
     campaign.add_argument("--approval", type=Path, required=True)
@@ -131,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
     campaign.add_argument("--output", type=Path, required=True)
     campaign.add_argument("--approved", action="store_true")
     campaign.add_argument("--max-runs", type=int, default=1000)
+    campaign.add_argument("--optimize", action="store_true", help="search and evaluate frozen holdout candidates using [balance]")
     args = parser.parse_args(argv)
     if args.command in {"plan", "approve", "campaign"}:
         from .config import load_config
@@ -152,18 +155,29 @@ def main(argv: list[str] | None = None) -> int:
                 result = approve_plan(config, args.kind, args.artifact, args.receipt,
                     approved=args.approved, targets=args.targets, targets_approval=args.targets_approval)
             else:
-                from .planner.campaign import run_approved_campaign
-                result = run_approved_campaign(config, args.campaign, args.approval, args.output,
+                if args.optimize:
+                    from .campaign import run_balance_campaign as execute_campaign
+                else:
+                    from .planner.campaign import run_approved_campaign as execute_campaign
+                result = execute_campaign(config, args.campaign, args.approval, args.output,
                     approved=args.approved, targets=args.targets, targets_approval=args.targets_approval,
                     max_runs=args.max_runs)
             print(json.dumps(result, ensure_ascii=False, allow_nan=False))
+            if result.get("status") == "interrupted":
+                return 130
             return 0 if result.get("status", "passed") in {"passed", "completed"} else 1
         except (OSError, ValueError) as error:
             parser.error(str(error))
     if args.command == "bench":
         from .bench import bench_tinyraid
         try:
-            result = bench_tinyraid(args.output, split=args.split, max_runs=args.runs,
+            if args.game == "tinyraid-balance":
+                if args.runs is not None or args.deciders is not None or args.cases is not None or args.clips or args.split != "holdout":
+                    raise ValueError("tinyraid-balance uses its fixed seed, policy and run qualification plan")
+                from .balance_bench import bench_balance
+                result = bench_balance(args.output)
+            else:
+                result = bench_tinyraid(args.output, split=args.split, max_runs=args.runs,
                                     backends=args.deciders,
                                     cases=args.cases.split(",") if args.cases is not None else None,
                                     clips=args.clips)
@@ -227,13 +241,30 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("supply the game command after --")
     try:
         instructions = args.instructions.read_text(encoding="utf-8") if args.instructions else ""
-        decider = make_decider(args.decider, seed=args.seed, tape_path=args.tape)
+        runtime = None
+        environment = None
+        if args.decider == "jev":
+            if args.config is None:
+                raise ValueError("bridge --decider jev requires --config")
+            from .config import load_config
+            from .orchestrate import hosted_runtime
+            config = load_config(args.config)
+            if args.instructions is None:
+                instructions = config.instructions
+            if args.wall_timeout is None:
+                args.wall_timeout = config.wall_timeout
+            runtime = hosted_runtime(config, args.run_dir.resolve().parent / "decider-budget.json", 1)
+            environment = dict(os.environ)
+            environment.pop("TYPESAFE_API_KEY", None)
+            environment.pop(config.raw.get("decider", {}).get("api_key_env", "TYPESAFE_API_KEY"), None)
+        decider = make_decider(args.decider, seed=args.seed, tape_path=args.tape,
+                              hosted_runtime=runtime, run_id=str(args.run_dir.resolve()))
     except (OSError, ValueError) as error:
         parser.error(str(error))
     code = run_bridge(args.game_command[1:], args.run_dir, decider,
                       instructions=instructions, decider_name=args.decider,
-                      wall_timeout_s=args.wall_timeout)
+                      wall_timeout_s=args.wall_timeout, env=environment)
     summary = json.loads((args.run_dir / "bridge_summary.json").read_text(encoding="utf-8"))
     print(f"decider={args.decider} exit_code={code} decisions={summary['decisions']} "
           f"run_dir={args.run_dir}", file=sys.stderr)
-    return code
+    return 1 if code == 0 and summary.get("valid") is not True else code

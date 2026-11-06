@@ -4,7 +4,7 @@
 
 ## 2.1 Process model
 
-The diagram is the full design. M0–M3 supply the game/adapter, offline deciders, bridge, replay, isolated batches, aggregation, conformance checks, and the QA path. LLM planning, optimization, and the later campaign stages remain planned.
+The diagram is the full design. M0–M3 supply the game/adapter, offline deciders, bridge, replay, isolated batches, aggregation, conformance checks, and the QA path. M4 supplies between-run planner drafts and approval/budget accounting. M5 supplies numeric search, frozen holdout selection, and proposal patches. M6 supplies the agent skill and a second thin-executor example; M7 supplies the optional Jev HTTP backend. Live provider, broader unseen-game, and human-play qualification remain separate gaps. Automatic default application remains unimplemented.
 
 ```text
  human: approves goals, campaigns, and any default change
@@ -62,8 +62,8 @@ shakedown/
     processes.py        bounded child processes and cancellation
     windows_job.py      Windows descendant containment
     bridge.py           one game process ↔ one decider
-    deciders/           random.py, mock.py, tape.py; jev.py planned
-    planner/            planned: CLI backends and schemas
+    deciders/           random.py, mock.py, tape.py, jev.py
+    planner/            CLI backends, schemas, approvals, budgets, baseline campaigns
     orchestrate.py      batches → runs → workers
     aggregate.py        metrics.json
     explore.py                    QA sampling
@@ -71,12 +71,15 @@ shakedown/
     triage.py                      findings/
     clips.py            verified replay frames and encoding
     bench.py            controlled tinyraid qualification
-    optimize.py (planned)         tuning search
-    campaign.py (planned)         the planner ↔ optimizer loop with approval gates
+    optimize.py         bounded random/grid search and measured target distances
+    balance_gate.py     holdout improvement, oracle, sample, and policy checks
+    campaign.py         approved search/revision loop and frozen holdout evaluation
+    proposals.py        reviewable tuning-default patches; never applies them
     conformance.py      adapter conformance checks (section 3.10)
-    cli.py              `shakedown bridge | run | check-adapter | explore | anomalies | triage | bench`
-  skill/shakedown/      planned agent skill and helper scripts
+    cli.py              `shakedown bridge | run | check-adapter | explore | anomalies | triage | bench | plan | approve | campaign`
+  skill/shakedown/      agent skill, adapter guides, transport skeletons, wrapper
   examples/tinyraid/    reference game and adapter (chapter 8)
+  examples/switchyard/  second game with a discrete-button thin executor
   tests/
 ```
 

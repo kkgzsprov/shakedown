@@ -1,0 +1,24 @@
+[game]
+cwd = "../.."
+command = ["{python}", "-m", "examples.switchyard", "--headless", "--seed", "{seed}", "--map", "{map}", "--duration", "{seconds}", "--profile-name", "{profile}", "--decider", "{decider_mode}", "--tuning", "{tuning_file}", "--telemetry", "{run_dir}/telemetry.jsonl", "--record-inputs", "{run_dir}/inputs.json"]
+replay_command = ["{python}", "-m", "examples.switchyard", "--replay-inputs", "{inputs_file}", "--telemetry", "{run_dir}/telemetry.jsonl"]
+maps = ["depot", "loop"]
+profiles = ["courier", "careful"]
+
+[batch]
+seeds = [1, 7, 19]
+deciders = ["rule", "mock"]
+seconds = 16
+workers = 2
+wall_timeout_s = 10
+bootstrap_samples = 100
+
+[tuning]
+keys = "tuning_keys.json"
+candidates = [{}]
+
+[checks]
+oracle_args = ["--scenario", "stuck"]
+oracle_seconds = 8
+oracle_kind = "stuck"
+visibility_command = ["{python}", "-m", "examples.switchyard.checks"]

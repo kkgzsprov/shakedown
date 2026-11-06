@@ -4,7 +4,7 @@
 
 ## 2.1 프로세스 모델
 
-아래 그림은 전체 설계다. M0~M3는 게임·어댑터, 오프라인 디사이더, 브리지, 재생, 격리 배치, 집계, 적합성 검사, QA 경로를 제공한다. LLM 계획·최적화·이후 캠페인 단계는 앞으로 구현한다.
+아래 그림은 전체 설계다. M0~M3는 게임·어댑터, 오프라인 디사이더, 브리지, 재생, 격리 배치, 집계, 적합성 검사, QA 경로를 제공한다. M4는 실행 사이의 플래너 초안과 승인·예산 기록, M5는 수치 탐색·보류 시드 선택 고정·제안 패치, M6는 에이전트 스킬·두 번째 얇은 실행기 예제, M7은 선택적 Jev HTTP 백엔드를 제공한다. 실제 공급자, 더 넓은 처음 보는 게임, 사람 플레이의 검증은 별도 과제다. 기본값 자동 적용은 미구현이다.
 
 ```text
  human: approves goals, campaigns, and any default change
@@ -62,8 +62,8 @@ shakedown/
     processes.py        bounded child processes and cancellation
     windows_job.py      Windows descendant containment
     bridge.py           one game process ↔ one decider
-    deciders/           random.py, mock.py, tape.py; jev.py planned
-    planner/            planned: CLI backends and schemas
+    deciders/           random.py, mock.py, tape.py, jev.py
+    planner/            CLI backends, schemas, approvals, budgets, baseline campaigns
     orchestrate.py      batches → runs → workers
     aggregate.py        metrics.json
     explore.py                    QA sampling
@@ -71,12 +71,15 @@ shakedown/
     triage.py                      findings/
     clips.py            verified replay frames and encoding
     bench.py            controlled tinyraid qualification
-    optimize.py (planned)         tuning search
-    campaign.py (planned)         the planner ↔ optimizer loop with approval gates
+    optimize.py         bounded random/grid search and measured target distances
+    balance_gate.py     holdout improvement, oracle, sample, and policy checks
+    campaign.py         approved search/revision loop and frozen holdout evaluation
+    proposals.py        reviewable tuning-default patches; never applies them
     conformance.py      adapter conformance checks (section 3.10)
-    cli.py              `shakedown bridge | run | check-adapter | explore | anomalies | triage | bench`
-  skill/shakedown/      planned agent skill and helper scripts
+    cli.py              `shakedown bridge | run | check-adapter | explore | anomalies | triage | bench | plan | approve | campaign`
+  skill/shakedown/      agent skill, adapter guides, transport skeletons, wrapper
   examples/tinyraid/    reference game and adapter (chapter 8)
+  examples/switchyard/  second game with a discrete-button thin executor
   tests/
 ```
 

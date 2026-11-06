@@ -4,7 +4,7 @@
 
 ## 5.1 Planner backends
 
-The M4 planner runs between gameplay runs. It produces structured drafts through a command-line LLM or the offline `mock` backend. The baseline campaign executor is implemented at M4; the optimizer, iterative balance loop, and default changes remain M5 design.
+The M4 planner runs between gameplay runs. It produces structured drafts through a command-line LLM or the offline `mock` backend. M5 adds bounded numeric search and held-out proposal evaluation through `campaign --optimize`; automatic default application remains unimplemented.
 
 | Backend | Call | Notes |
 |---|---|---|
@@ -30,7 +30,7 @@ The CLI contracts were checked against local Codex 0.166.0 and Claude Code 2.1.3
 
 Profile instructions are the planner's only influence on play. They are prefixed to the decider's question for every decision in a run, limited to 600 characters per profile, and cannot add candidates or new actions. The schema checks length only, so a human reads `campaign.json` before approving it.
 
-Proposed ranges must satisfy the configured key-table constraints before the artifact is accepted. M4 records proposals but does not run a numeric search or apply tuned defaults. The future balance loop's clipping and revision behavior belongs to M5.
+Proposed ranges must satisfy the configured key-table constraints before the artifact is accepted. The M5 balance loop also limits revisions to the human-approved campaign's search box, records clipping in `revision.json`, and rejects newly introduced tuning keys. Revisions cannot change profile instructions or the fixed policy.
 
 ## 5.3 What the planner does not decide
 
@@ -45,7 +45,7 @@ Proposed ranges must satisfy the configured key-table constraints before the art
 |---|---|---|
 | Before a campaign runs | Approved targets and campaign receipts, plus `--approved` at execution | Instructions and ranges steer every run |
 | Before planner spending | A budget ledger reserves each call before launch | Failed attempts and unknown charges must not disappear from accounting |
-| Before changing defaults | No M4 command applies defaults | A balance change is a design decision; patch generation and application belong to M5 |
+| Before changing defaults | M5 writes reviewable patches; no command applies them | A balance change is a human design decision |
 
 `approve` records an explicit operator assertion bound to artifact content and configuration. Campaign approval also depends on the approved targets. Receipts are unsigned: they detect stale inputs, but do not authenticate the person approving them. Editing an artifact or relevant configuration requires fresh approval. The prototype's direct-default-change workflow is not part of M4.
 
@@ -60,10 +60,10 @@ shakedown approve {targets,campaign} --config PATH --artifact PATH --receipt PAT
   [--targets PATH --targets-approval PATH]
 
 shakedown campaign --config PATH --campaign PATH --approval PATH
-  --targets PATH --targets-approval PATH --output DIR --approved [--max-runs N]
+  --targets PATH --targets-approval PATH --output DIR --approved [--max-runs N] [--optimize]
 ```
 
-The wrapped lines describe command syntax, not shell line continuations. Repeat `--input NAME=PATH` for named evidence files. The required name is `design_notes` for `targets` and `campaign`, `metrics` for `revise` and `report`, and `run` for `bug`. The respective output artifacts are `targets.json`, `campaign.json`, `revision.json`, `bug_draft.json`, and both `report.json` and `report.md`. Campaign drafting and approval use the approved targets and their receipt. `campaign` executes only one baseline round; `--max-runs` bounds that round rather than enabling optimization.
+The wrapped lines describe command syntax, not shell line continuations. Repeat `--input NAME=PATH` for named evidence files. The required name is `design_notes` for `targets` and `campaign`, `metrics` for `revise` and `report`, and `run` for `bug`. The respective output artifacts are `targets.json`, `campaign.json`, `revision.json`, `bug_draft.json`, and both `report.json` and `report.md`. Campaign drafting and approval use the approved targets and their receipt. Without `--optimize`, `campaign` executes one baseline round. With it, the M5 loop uses `[balance]`; `--max-runs` can lower the configured run cap. See chapter 7.
 
 The `[planner]` configuration accepts `backend`, `budget_usd`, `call_budget_usd`, `max_calls`, `timeout_s`, `model`, `command`, `codex_mode`, and `ledger`. `codex_mode` accepts `disabled` or `restricted`. Select the model explicitly for live calls; examples do not pick a provider model or enable model fallback. The plan command's budget and ledger options override the corresponding configured limits for that invocation.
 
@@ -71,16 +71,18 @@ The ledger reserves `call_budget_usd` before each attempt and enforces the total
 
 ## 5.5 The agent skill
 
-The planned M6 `skill/shakedown/` packages Shakedown for coding agents such as Claude Code or Codex. The agent running the skill is the planner. The intended skill gives it:
+The M6 [`skill/shakedown/`](../skill/shakedown/SKILL.md) package supplies a workflow for coding agents such as Claude Code or Codex. The agent running the skill is the planner. The package gives it:
 
 | Part | Contents |
 |---|---|
 | `SKILL.md` | When to use Shakedown, the three-layer model, the command list, the approval gates, and what never to do (commit balance changes, put keys in files, judge fairness) |
 | Adapter guide | A checklist from chapter 3, ordered as the agent should build it: headless mode → telemetry → input recording and replay → observation → candidates → executor → decision points → oracles |
-| Adapter templates | Skeleton code for the protocol loop in C++, C#, GDScript, and Python, plus the C7 no-leak test template |
+| Adapter templates | Transport skeletons for C++17, C#, GDScript, and Python, plus a game-owned C7 visibility fixture pattern; game input/replay integration still needs implementation and conformance |
 | Scripts | `shakedown check-adapter`, `run`, `explore`, `triage`, `campaign` |
 
 The skill does not ship an executor, because an executor is game-specific code (chapter 3). Writing one is a task the skill hands to the agent, and `check-adapter` is how the agent proves the result works. An adapter counts as done only when checks C1 to C3 pass (section 3.10).
+
+`examples/switchyard/` provides a second discrete-button adapter and exercises the skill verification workflow. Its shipped implementation preceded the skill read. A separate fresh-context trial read the skill, game rules, protocol, and configuration without the shipped adapter and wrote an independent adapter. It passed C1–C6 on seed 7, `depot`, `courier`, meeting the minimum C1–C3 support criterion; C7 remained `unmeasured`. Template compilation, transport behavior, game conformance, and broader blind generalization remain separate claims; inspect the skill's validation notes for each language.
 
 Games with discrete actions per decision, such as turn-based, card, puzzle, or menu-driven games, need almost no executor: each candidate maps to one button or API call. For these the templates include a "thin executor" mode that a table of `candidate → input` covers.
 

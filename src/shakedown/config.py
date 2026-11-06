@@ -6,12 +6,14 @@ from dataclasses import dataclass
 import json
 import math
 from pathlib import Path, PureWindowsPath
+import re
 import string
 import sys
 import tomllib
 
 
-BACKENDS = frozenset({"rule", "mock", "random"})
+OFFLINE_BACKENDS = frozenset({"rule", "mock", "random"})
+BACKENDS = OFFLINE_BACKENDS | {"jev"}
 FIELDS = frozenset({"python", "project_dir", "exe", "seed", "map", "profile",
                     "seconds", "run_dir", "decider_mode", "tuning_file", "inputs_file"})
 EXIT_CODES = {"ok": 0, "contract": 2, "oracle": 4, "divergence": 5}
@@ -183,7 +185,7 @@ def load_config(path: str | Path) -> ProjectConfig:
     with path.open("rb") as stream:
         raw = tomllib.load(stream)
     _table(raw, "configuration", {"game", "batch", "decider", "tuning", "checks", "planner",
-                                  "explore", "anomalies", "triage", "clips"})
+                                  "explore", "anomalies", "triage", "clips", "balance"})
     for section in ("explore", "anomalies", "triage", "clips"):
         if section in raw and type(raw[section]) is not dict:
             raise ValueError(f"{section} must be a table")
@@ -204,13 +206,37 @@ def load_config(path: str | Path) -> ProjectConfig:
         "command", "replay_command", "exe", "cwd", "maps", "profiles", "fixtures", "exit_codes"})
     batch = _table(raw.get("batch", {}), "batch", {
         "seeds", "deciders", "seconds", "workers", "wall_timeout_s", "bootstrap_samples", "bootstrap_seed"})
-    decider = _table(raw.get("decider", {}), "decider", {"backend", "budget_usd", "instructions"})
+    decider = _table(raw.get("decider", {}), "decider", {
+        "backend", "budget_usd", "instructions", "model", "endpoint", "api_key_env",
+        "call_budget_usd", "max_calls", "timeout_s", "retries", "backoff_s", "max_elapsed_s",
+        "input_price_per_million", "cache", "ledger"})
     tuning = _table(raw.get("tuning", {}), "tuning", {"keys", "candidates"})
     checks = _table(raw.get("checks", {}), "checks", {
         "oracle_args", "oracle_seconds", "oracle_kind", "visibility_command"})
     planner = _table(raw.get("planner", {}), "planner", {
         "backend", "budget_usd", "call_budget_usd", "max_calls", "timeout_s",
         "model", "command", "codex_mode", "ledger"})
+    balance = _table(raw.get("balance", {}), "balance", {
+        "method", "seed", "candidates_per_round", "grid_points", "holdout_seeds",
+        "min_runs", "min_gain", "top_k", "max_runs", "policies", "planner_revisions", "policy_files"})
+    if type(balance.get("method", "random")) is not str or balance.get("method", "random") not in {"grid", "random"}:
+        raise ValueError("balance.method must be grid or random")
+    _integer(balance.get("seed", 0), "balance.seed")
+    for key, default in (("candidates_per_round", 4), ("grid_points", 3),
+                         ("min_runs", 5), ("top_k", 1), ("max_runs", 1000)):
+        _integer(balance.get(key, default), f"balance.{key}", 2 if key == "grid_points" else 1)
+    if not 0 < _number(balance.get("min_gain", .2), "balance.min_gain") <= 1:
+        raise ValueError("balance.min_gain must be greater than zero and at most one")
+    holdout = balance.get("holdout_seeds", [])
+    if (type(holdout) is not list or any(type(seed) is not int for seed in holdout)
+            or len(set(holdout)) != len(holdout)):
+        raise ValueError("balance.holdout_seeds must be unique integers")
+    if "policies" in balance and any(name not in OFFLINE_BACKENDS for name in _names(balance["policies"], "balance.policies")):
+        raise ValueError("balance.policies must be offline deciders")
+    if type(balance.get("planner_revisions", False)) is not bool:
+        raise ValueError("balance.planner_revisions must be boolean")
+    if "policy_files" in balance:
+        _names(balance["policy_files"], "balance.policy_files")
     cwd = game.get("cwd", ".")
     if type(cwd) is not str or not cwd or "\x00" in cwd:
         raise ValueError("game.cwd must be a directory path")
@@ -233,11 +259,25 @@ def load_config(path: str | Path) -> ProjectConfig:
         raise ValueError("duplicate batch seeds")
     backend = decider.get("backend", "mock")
     if type(backend) is not str or backend not in BACKENDS:
-        raise ValueError("M2 decider.backend must be rule, mock, or random")
+        raise ValueError("decider.backend must be rule, mock, random, or jev")
     backends = _names(batch.get("deciders", [backend]), "batch.deciders")
     if any(item not in BACKENDS for item in backends):
-        raise ValueError("M2 batch deciders must be rule, mock, or random")
+        raise ValueError("batch deciders must be rule, mock, random, or jev")
     _number(decider.get("budget_usd", 0), "decider.budget_usd")
+    if "jev" in backends:
+        if type(decider.get("model")) is not str or re.fullmatch(r"jev-\d+\.\d+\.\d+", decider["model"]) is None:
+            raise ValueError("jev requires an explicitly pinned model such as jev-X.Y.Z")
+        _number(decider.get("budget_usd", 0), "decider.budget_usd", strict=True)
+    for key, default in (("call_budget_usd", .001), ("timeout_s", 3), ("max_elapsed_s", 12)):
+        _number(decider.get(key, default), f"decider.{key}", strict=True)
+    _number(decider.get("backoff_s", .1), "decider.backoff_s")
+    _number(decider.get("input_price_per_million", .042), "decider.input_price_per_million")
+    _integer(decider.get("max_calls", 1000), "decider.max_calls", 1)
+    if not 0 <= _integer(decider.get("retries", 2), "decider.retries", 0) <= 2:
+        raise ValueError("decider.retries must be zero, one or two")
+    for key in ("model", "endpoint", "api_key_env", "cache", "ledger"):
+        if key in decider and (type(decider[key]) is not str or not decider[key] or "\x00" in decider[key]):
+            raise ValueError(f"decider.{key} must be a nonempty string")
     _number(planner.get("budget_usd", 0), "planner.budget_usd")
     _number(planner.get("call_budget_usd", .5), "planner.call_budget_usd", strict=True)
     _integer(planner.get("max_calls", 10), "planner.max_calls", 1)

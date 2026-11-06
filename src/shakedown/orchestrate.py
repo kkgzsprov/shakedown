@@ -34,11 +34,24 @@ def digest(data) -> str:
 
 def child_environment(config: ProjectConfig) -> dict:
     environment = dict(os.environ)
+    environment.pop("TYPESAFE_API_KEY", None)
+    environment.pop(config.raw.get("decider", {}).get("api_key_env", "TYPESAFE_API_KEY"), None)
     environment["PYTHONPATH"] = os.pathsep.join(filter(None, (
         str(config.root), str(Path(__file__).resolve().parents[1]),
         environment.get("PYTHONPATH", ""))))
     environment["PYTHONUNBUFFERED"] = "1"
     return environment
+
+
+def hosted_runtime(config: ProjectConfig, ledger_path: Path, workers: int):
+    """Create one shared budget/cache/rate limiter for a hosted batch/campaign."""
+    from .deciders.jev import JevRuntime
+    settings = dict(config.raw.get("decider", {}))
+    if "cache" in settings:
+        settings["cache"] = (config.path.parent / settings["cache"]).resolve()
+    if "ledger" in settings:
+        ledger_path = (config.path.parent / settings["ledger"]).resolve()
+    return JevRuntime(settings, ledger_path=ledger_path, max_concurrency=workers)
 
 
 def prepare_work(config: ProjectConfig, run_dir: Path) -> Path:
@@ -118,7 +131,7 @@ def _classify(record: dict, run_dir: Path, config: ProjectConfig) -> None:
     except (OSError, ValueError, TypeError):
         reasons.append("invalid_input_recording")
     summary_path = run_dir / "bridge_summary.json"
-    if record["decider"] in {"random", "mock"}:
+    if record["decider"] in {"random", "mock", "jev"}:
         try:
             summary = _json(summary_path)
             if type(summary) is not dict or summary.get("exit_code") != code:
@@ -156,15 +169,16 @@ def run_case(config: ProjectConfig, run_dir: Path, *, seed: int,
              map_name: str, profile: str, decider: str = "rule",
              duration: float | None = None, tuning: dict | None = None,
              tape_path: Path | None = None, replay_inputs: Path | None = None,
-             extra_args: tuple[str, ...] = (), control: ProcessControl | None = None) -> dict:
+             extra_args: tuple[str, ...] = (), control: ProcessControl | None = None,
+             hosted=None) -> dict:
     """Persist one attempt, including launch failures, without automatic retries."""
     run_dir = Path(run_dir).resolve()
     seconds = config.duration if duration is None else duration
     if (type(seed) is not int or type(seconds) not in (int, float)
             or not math.isfinite(seconds) or seconds <= 0 or type(tuning or {}) is not dict):
         raise ValueError("invalid run specification")
-    if decider not in {"rule", "random", "mock", "tape"}:
-        raise ValueError("unknown offline decider")
+    if decider not in {"rule", "random", "mock", "tape", "jev"}:
+        raise ValueError("unknown decider")
     if decider == "tape" and tape_path is None:
         raise ValueError("tape mode requires a tape path")
     if replay_inputs is not None and config.replay_command is None:
@@ -184,7 +198,7 @@ def run_case(config: ProjectConfig, run_dir: Path, *, seed: int,
         work = prepare_work(config, run_dir)
         tuning_file = run_dir / "tuning.json"
         write_json(tuning_file, {"tuning_version": 1, "values": values})
-        mode = "bridge" if decider in {"random", "mock"} else "rule"
+        mode = "bridge" if decider in {"random", "mock", "jev"} else "rule"
         if decider == "tape":
             mode = f"tape:{Path(tape_path).resolve()}"
         command = build_command(config, run_dir=run_dir, seed=seed, map_name=map_name,
@@ -196,9 +210,12 @@ def run_case(config: ProjectConfig, run_dir: Path, *, seed: int,
         record["mode"] = "inputs" if replay_inputs else mode
         write_json(run_dir / "run.json", record)
         environment = child_environment(config)
-        if decider in {"random", "mock"} and replay_inputs is None:
+        if decider in {"random", "mock", "jev"} and replay_inputs is None:
+            if decider == "jev" and hosted is None:
+                hosted = hosted_runtime(config, run_dir.parent / "decider-budget.json", 1)
             record["exit_code"] = run_bridge(
-                command, run_dir, make_decider(decider, seed=seed),
+                command, run_dir, make_decider(decider, seed=seed, hosted_runtime=hosted,
+                                              run_id=str(run_dir)),
                 instructions=config.instructions, decider_name=decider,
                 wall_timeout_s=config.wall_timeout, cwd=work, env=environment, control=control)
             summary = _json(run_dir / "bridge_summary.json")
@@ -228,7 +245,7 @@ def run_case(config: ProjectConfig, run_dir: Path, *, seed: int,
 
 def run_batch(config: ProjectConfig, output_dir: Path, *, workers: int | None = None,
               seeds: list[int] | None = None, backends: list[str] | None = None,
-              duration: float | None = None) -> dict:
+              duration: float | None = None, hosted=None) -> dict:
     from .aggregate import aggregate_batch
     from .processes import ProcessControl
 
@@ -241,12 +258,16 @@ def run_batch(config: ProjectConfig, output_dir: Path, *, workers: int | None = 
     if (not selected_seeds or any(type(seed) is not int for seed in selected_seeds)
             or len(set(selected_seeds)) != len(selected_seeds)):
         raise ValueError("seeds must be nonempty unique integers")
-    if (not selected_backends or any(name not in {"rule", "random", "mock"} for name in selected_backends)
+    if (not selected_backends or any(name not in {"rule", "random", "mock", "jev"} for name in selected_backends)
             or len(set(selected_backends)) != len(selected_backends)):
-        raise ValueError("batch deciders must be unique offline backends: rule, random, mock")
+        raise ValueError("batch deciders must be unique names: rule, random, mock, jev")
     if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds <= 0:
         raise ValueError("seconds must be finite and positive")
     output_dir = Path(output_dir).resolve()
+    if "jev" in selected_backends and hosted is None:
+        if output_dir.exists():
+            raise ValueError("batch output already exists")
+        hosted = hosted_runtime(config, output_dir.parent / "decider-budget.json", count_workers)
     output_dir.mkdir(parents=True, exist_ok=False)
     (output_dir / "runs").mkdir()
     combinations = list(itertools.product(selected_seeds, config.maps, config.profiles,
@@ -300,7 +321,7 @@ def run_batch(config: ProjectConfig, output_dir: Path, *, workers: int | None = 
             future = executor.submit(run_case, config, output_dir / "runs" / run_id,
                                      seed=spec["seed"], map_name=spec["map"], profile=spec["profile"],
                                      decider=spec["decider"], duration=seconds, tuning=spec["tuning"],
-                                     control=control)
+                                     control=control, hosted=hosted)
             jobs[future] = spec
         for future in as_completed(jobs):
             collect(future, jobs[future])
@@ -336,5 +357,7 @@ def run_batch(config: ProjectConfig, output_dir: Path, *, workers: int | None = 
     manifest.update(status="interrupted" if interrupted else "completed", runs=rows,
                     valid_runs=sum(row["valid"] for row in rows),
                     invalid_runs=sum(not row["valid"] for row in rows), findings=len(findings))
+    if hosted is not None:
+        manifest["hosted"] = hosted.summary()
     write_json(output_dir / "batch.json", manifest)
     return manifest
