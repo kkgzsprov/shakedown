@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 from unittest.mock import Mock, patch
 
 import tests
@@ -207,11 +208,24 @@ class JevTests(unittest.TestCase):
         self.assertEqual(len(runtime.summary()["budget"]["attempts"]), 2)
 
     def test_retry_after_cannot_extend_total_deadline(self):
-        self.server.responses.append({"status": 429, "headers": {"Retry-After": "60"}})
         runtime = self.runtime(max_elapsed_s=.1)
-        result = self.decider(runtime).decide(request(), "")
+        decider = self.decider(runtime)
+        clock = [0.]
+        def rate_limited(*_args, **_kwargs):
+            clock[0] += .02
+            raise urllib.error.HTTPError(runtime.endpoint, 429, "fixture", {"Retry-After": "60"}, None)
+        opener = Mock()
+        opener.open.side_effect = rate_limited
+        with patch("shakedown.deciders.jev.time.monotonic", side_effect=lambda: clock[0]), \
+                patch("shakedown.deciders.jev.urllib.request.build_opener", return_value=opener), \
+                patch("shakedown.deciders.jev.time.sleep") as sleep:
+            result = decider.decide(request(), "")
         self.assertEqual((result.source, result.attempts), ("fallback", 1))
-        self.assertLess(result.latency_ms, 100)
+        self.assertEqual(opener.open.call_count, 1)
+        sleep.assert_not_called()
+        self.assertAlmostEqual(result.latency_ms, 20.)
+        self.assertEqual(runtime.summary()["cap"], 2)
+        self.assertEqual(len(runtime.summary()["budget"]["attempts"]), 1)
 
     def test_permanent_http_errors_do_not_retry_or_leak_response(self):
         for status in (400, 401, 402, 413, 415, 422):
