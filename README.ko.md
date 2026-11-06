@@ -4,7 +4,7 @@
 
 게임용 AI 플레이테스터다. LLM이 테스트 캠페인(campaign)을 계획하고, 빠른 결정 모델이 전술을 고르고, 게임 쪽 실행기(executor)가 실제 입력 경로로 게임을 플레이한다. 모든 결정을 테이프(tape)에 기록하므로 어떤 버그든 결정론적으로 재생된다.
 
-> 상태: 초기 단계. 마일스톤 M0(와이어 프로토콜, 브리지, `random`·`mock`·`tape` 디사이더)을 구현했고 가짜 게임으로 시험했다. 나머지는 아직 설계다. [설계 문서](docs/ko/README.md)와 [로드맵](docs/ko/09-roadmap.md)을 참고한다.
+> 상태: 초기 단계. M0(프로토콜, 브리지, 오프라인 디사이더)와 M1(헤드리스 tinyraid 참조 게임, 어댑터, 재생)을 구현했다. M2 이후는 설계 단계다. [설계 문서](docs/ko/README.md)와 [로드맵](docs/ko/09-roadmap.md)을 참고한다.
 
 ## 동작 방식
 
@@ -31,14 +31,24 @@ Shakedown은 봇 플레이어를 세 계층으로 돌리며, 계층마다 동작
 python -m unittest discover -s tests -v
 ```
 
-`mock` 디사이더로 가짜 게임에 브리지를 붙여 돌린 뒤, 그 실행을 테이프로 재생한다.
+저장소 루트에서 tinyraid의 로컬 규칙으로 실행하고, 기록된 입력을 디사이더 없이 재생한다.
 
 ```bash
-PYTHONPATH=src python -m shakedown bridge --decider mock --run-dir runs/a -- python tests/fake_game.py --seed 3
-PYTHONPATH=src python -m shakedown bridge --decider tape --tape runs/a/decision_tape.jsonl --run-dir runs/b -- python tests/fake_game.py --seed 3
+python -m examples.tinyraid --seed 7 --duration 45 --profile-name looter --decider rule --telemetry runs/tinyraid-rule/telemetry.jsonl --record-inputs runs/tinyraid-rule/inputs.json
+python -m examples.tinyraid --replay-inputs runs/tinyraid-rule/inputs.json --telemetry runs/tinyraid-input-replay/telemetry.jsonl
 ```
 
-실행 디렉터리마다 `decision_tape.jsonl`, `bridge_summary.json`, `stdout.log`가 남는다.
+패키지를 설치해 브리지를 쓰고, `mock` 실행을 기록한 뒤 브리지의 결정 테이프를 어댑터 안에서 재생한다.
+
+```bash
+python -m pip install --no-build-isolation -e .
+python -m shakedown bridge --decider mock --run-dir runs/tinyraid-mock -- python -m examples.tinyraid --seed 7 --duration 12 --decider bridge --telemetry runs/tinyraid-mock/telemetry.jsonl --record-inputs runs/tinyraid-mock/inputs.json
+python -m examples.tinyraid --seed 7 --duration 12 --decider tape:runs/tinyraid-mock/decision_tape.jsonl --telemetry runs/tinyraid-tape/telemetry.jsonl
+```
+
+설치는 기존 빌드 도구를 사용한다. `setuptools`가 없으면 먼저 설치한다. Python의 Scripts 디렉터리가 `PATH`에 있으면 `python -m shakedown` 대신 `shakedown`을 쓸 수 있다. 예제는 소스 작업본에 있으므로 저장소 루트에서 명령을 실행한다.
+
+브리지는 `decision_tape.jsonl`, `bridge_summary.json`, `stdout.log`를 쓰고, 게임은 지정한 텔레메트리와 입력 기록을 쓴다. 고정된 M1 시드 조합, 버그 픽스처, 선택적 PNG 프레임은 [8장](docs/ko/08-example-game.md)에 있다. `check-adapter`와 `bench`는 M1에 포함되지 않은 계획 명령이다.
 
 ## 라이선스
 

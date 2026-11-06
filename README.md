@@ -4,7 +4,7 @@
 
 AI playtester for games: an LLM plans test campaigns, a fast decision model picks tactics, and a game-side executor plays through the real input path. Every decision is taped, so every bug replays deterministically.
 
-> Status: early. Milestone M0 (wire protocol, bridge, and the `random`, `mock` and `tape` deciders) is implemented and tested against a fake game. Everything else is still design. See [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
+> Status: early. M0 (protocol, bridge, offline deciders) and M1 (the headless tinyraid reference game, adapter, and replay) are implemented. M2 and later remain design. See [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
 
 ## How it works
 
@@ -31,14 +31,24 @@ The tests need no network and no install:
 python -m unittest discover -s tests -v
 ```
 
-Run the bridge against the fake game with the `mock` decider, then replay that run from its tape:
+From the repository root, run tinyraid with its local rule and replay the recorded inputs without a decider:
 
 ```bash
-PYTHONPATH=src python -m shakedown bridge --decider mock --run-dir runs/a -- python tests/fake_game.py --seed 3
-PYTHONPATH=src python -m shakedown bridge --decider tape --tape runs/a/decision_tape.jsonl --run-dir runs/b -- python tests/fake_game.py --seed 3
+python -m examples.tinyraid --seed 7 --duration 45 --profile-name looter --decider rule --telemetry runs/tinyraid-rule/telemetry.jsonl --record-inputs runs/tinyraid-rule/inputs.json
+python -m examples.tinyraid --replay-inputs runs/tinyraid-rule/inputs.json --telemetry runs/tinyraid-input-replay/telemetry.jsonl
 ```
 
-Each run directory holds `decision_tape.jsonl`, `bridge_summary.json` and `stdout.log`.
+Install the package to use the bridge, record a `mock` run, then replay the bridge's decision tape inside the adapter:
+
+```bash
+python -m pip install --no-build-isolation -e .
+python -m shakedown bridge --decider mock --run-dir runs/tinyraid-mock -- python -m examples.tinyraid --seed 7 --duration 12 --decider bridge --telemetry runs/tinyraid-mock/telemetry.jsonl --record-inputs runs/tinyraid-mock/inputs.json
+python -m examples.tinyraid --seed 7 --duration 12 --decider tape:runs/tinyraid-mock/decision_tape.jsonl --telemetry runs/tinyraid-tape/telemetry.jsonl
+```
+
+The install uses the existing build tools; install `setuptools` first if it is absent. `shakedown` is equivalent to `python -m shakedown` when Python's Scripts directory is on `PATH`. The example stays in this source checkout, so run its commands from the repository root.
+
+The bridge writes `decision_tape.jsonl`, `bridge_summary.json`, and `stdout.log`; the game writes the requested telemetry and input recording. [Chapter 8](docs/08-example-game.md) documents the fixed M1 seed matrix, bug fixtures, and optional PNG frames. `check-adapter` and `bench` are planned commands, not part of M1.
 
 ## License
 

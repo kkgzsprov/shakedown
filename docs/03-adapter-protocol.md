@@ -2,7 +2,7 @@
 
 # 3. Adapter and wire protocol
 
-The adapter is the game-side half of Shakedown. It must live in the game because only the game can pause its own clock, compute what is legal, and inject input through the player's input path. Shakedown supplies the protocol, a conformance checker, and a reference adapter (chapter 8). The agent skill (chapter 5) helps a coding agent write an adapter for a new game.
+The adapter is the game-side half of Shakedown. It must live in the game because only the game can pause its own clock, compute what is legal, and inject input through the player's input path. Shakedown supplies the protocol and a reference adapter (chapter 8). The generic conformance checker (M2) and agent skill (M6) are planned.
 
 ## 3.1 Responsibilities
 
@@ -151,6 +151,10 @@ In the prototype, explosions caused 39.5 % of deaths (423 of 1,071) in the overn
 
 `inputs.json` is the most useful artifact. A run that found a bug replays from it with no bridge and no model, and a few assertions turn it into a regression test in the game's own test suite.
 
+In tinyraid M1, each `decision` receipt has `status: "selected"`, `"applied"`, or `"dropped"`. An applied receipt carries `applied_step`; a dropped receipt carries `drop_reason`. Receipts and the bridge tape share `seq`, while wall-clock latency and backend source stay out of telemetry. A choice selected near the end may have no application receipt if the game ends before its delay elapses.
+
+Tinyraid input recording v1 stores the complete startup configuration (seed, map, duration, bug, scenario, tuning, profile), one `input` object per contiguous zero-based `step`, its exact `t = step / 60`, and the final result with a SHA-256 digest of game events excluding decisions. Replay loads this configuration and sends the recorded inputs directly to the simulation; it does not create an adapter. Missing/duplicate steps and invalid timestamps are contract errors. A valid input stream that produces a different result fails the replay assertion.
+
 ## 3.9 Exit codes
 
 | Code | Meaning |
@@ -162,9 +166,11 @@ In the prototype, explosions caused 39.5 % of deaths (423 of 1,071) in the overn
 
 Code 3 is left to the game, which may already use it (the prototype used 3 for replay assertion failures). A game that already uses these codes for something else can remap them in `shakedown.toml`.
 
+Tinyraid uses code 3 for input replay assertion failures and code 2 for malformed recordings. A successfully reproduced oracle still exits 4.
+
 ## 3.10 Conformance checks
 
-`shakedown check-adapter` runs these checks against a new adapter. C1 to C3 passed in the prototype (section 1.5). C4 to C6 were its phase acceptance criteria, and C7 was listed there as a test to write.
+The planned M2 command `shakedown check-adapter` will run these checks against a new adapter. M1 implements C1 to C6 against tinyraid in `tests/test_tinyraid.py`, plus a game-specific C7 wall-visibility fixture. Run them with `python -m unittest tests.test_tinyraid -v` from the repository root. C1 to C3 also passed in the earlier prototype (section 1.5).
 
 | Check | Pass condition |
 |---|---|

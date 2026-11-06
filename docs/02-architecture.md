@@ -4,6 +4,8 @@
 
 ## 2.1 Process model
 
+The diagram is the full design. M1 supplies the game/adapter, local deciders, bridge, and replay; the orchestrator, planner, and later stages are not implemented yet.
+
 ```text
  human: approves goals, campaigns, and any default change
    │
@@ -110,10 +112,12 @@ keys = "tuning_keys.json" # chapter 7
 | File | Written by | Contents |
 |---|---|---|
 | `run.json` | Orchestrator | Expanded command, seed, map, profile, tuning hash, decider, planner instruction hash, Shakedown and adapter versions |
-| `telemetry.jsonl` | Adapter | Game events plus `decision` lines with deterministic fields only |
-| `decision_tape.jsonl` | Bridge | Per decision: request hash, candidates, order seed, full answer, source, attempts, latency, model ID, applied step, drop reason |
+| `telemetry.jsonl` | Adapter | Game events and deterministic `decision` receipts: `seq`, choice, reason, status (`selected`, `applied`, `dropped`), `applied_step` or `drop_reason` where applicable |
+| `decision_tape.jsonl` | Bridge | Per decision: request hash, candidates, order seed, choice, probabilities, source, attempts, latency, model ID; records the selection before the game acts |
 | `inputs.json` | Adapter | Every input event the executor injected, with exact step times |
 | `bridge_summary.json` | Bridge | Decision count, fallback rate, cost, latency percentiles, `valid` flag |
 | `stdout.log` | Orchestrator | The game's other output |
 
 Section 3.8 defines what the adapter must write. Section 4.4 defines when a run is marked invalid.
+
+Join a tape row to the adapter's application/drop receipt by `seq`. The bridge cannot know a delayed choice's outcome when it writes the selection. This split keeps wire protocol v1 unchanged. In M1 the bridge writes `stdout.log`; `run.json` and orchestration are planned for M2.

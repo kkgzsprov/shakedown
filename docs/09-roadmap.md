@@ -6,6 +6,8 @@
 
 Each milestone ends with a check that passes on CI with no network and no key.
 
+Current implementation: M0 and M1. M1's process-level tests cover C1–C6, a C7 wall-visibility fixture, and the 18-run clean matrix in `examples/tinyraid/m1-seeds.json` (three seeds × two maps × three profiles, 45 seconds each). M2 and later are planned; no generic `check-adapter` or `bench` command exists yet. Local test results and the CI matrix configuration are separate evidence; see the actual CI run before claiming another platform passed.
+
 | Milestone | Contents | Done when |
 |---|---|---|
 | M0 Protocol | `protocol.py`, `bridge.py`, `random`/`mock`/`tape` deciders, a fake game for tests | Contract-error and divergence tests pass. Request hashing is stable across Python versions on CI. |

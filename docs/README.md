@@ -2,7 +2,7 @@
 
 # Shakedown design documents
 
-Status: M0 is implemented; the rest is design. These documents describe what is and will be built. The roadmap (chapter 9) says in what order.
+Status: M0 and M1 are implemented; M2 and later remain design. These documents describe what is and will be built. Chapter 8 covers the runnable tinyraid example; the roadmap (chapter 9) says what comes next.
 
 | Chapter | Read it for |
 |---|---|

@@ -4,6 +4,8 @@
 
 ## 2.1 프로세스 모델
 
+아래 그림은 전체 설계다. M1에는 게임·어댑터, 로컬 디사이더, 브리지, 재생이 있다. 오케스트레이터, 플래너와 이후 단계는 아직 구현하지 않았다.
+
 ```text
  human: approves goals, campaigns, and any default change
    │
@@ -110,10 +112,12 @@ keys = "tuning_keys.json" # chapter 7
 | 파일 | 작성 주체 | 내용 |
 |---|---|---|
 | `run.json` | 오케스트레이터 | 펼친 명령, 시드, 맵, 프로필(profile), 튜닝 해시, 디사이더, 플래너 지시문 해시, Shakedown 버전과 어댑터 버전 |
-| `telemetry.jsonl` | 어댑터 | 게임 이벤트와, 결정론적 필드만 담은 `decision` 줄 |
-| `decision_tape.jsonl` | 브리지 | 결정별 요청 해시, 후보, 순서 시드, 전체 답, 출처, 시도 횟수, 지연 시간, 모델 ID, 적용된 스텝, 폐기 사유 |
+| `telemetry.jsonl` | 어댑터 | 게임 이벤트와 결정론적 `decision` 영수증: `seq`, 선택, 사유, 상태(`selected`, `applied`, `dropped`), 해당하는 경우 `applied_step` 또는 `drop_reason` |
+| `decision_tape.jsonl` | 브리지 | 결정별 요청 해시, 후보, 순서 시드, 선택, 확률, 출처, 시도 횟수, 지연 시간, 모델 ID. 게임이 행동하기 전에 선택을 기록한다 |
 | `inputs.json` | 어댑터 | 실행기가 주입한 모든 입력 이벤트와 정확한 스텝 시각 |
 | `bridge_summary.json` | 브리지 | 결정 횟수, 폴백 비율, 비용, 지연 시간 백분위수, `valid` 플래그 |
 | `stdout.log` | 오케스트레이터 | 게임의 나머지 출력 |
 
 어댑터가 써야 할 내용은 3.8절에서 정의한다. 실행을 무효로 표시하는 조건은 4.4절에서 정의한다.
+
+테이프 행과 어댑터의 적용·폐기 영수증은 `seq`로 연결한다. 브리지가 선택을 쓸 때는 지연 후의 적용 결과를 알 수 없다. 이 분리로 와이어 프로토콜 v1을 유지한다. M1에서는 브리지가 `stdout.log`를 쓰며, `run.json`과 오케스트레이션은 M2 계획이다.
