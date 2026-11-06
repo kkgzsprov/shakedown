@@ -55,7 +55,7 @@ The implementation sends this request shape. The model pin below is illustrative
 }
 ```
 
-- Pin an exact model ID, never an alias such as `latest`. Record the model ID from each response, and invalidate a campaign whose model changes partway. Mixed versions cannot be compared.
+- Pin an exact model ID, never an alias such as `latest`. When `decider.model` is omitted, Shakedown uses the pinned default `jev-1.13.0`; set `model` to choose another exact version. Record the model ID from each response, and invalidate a campaign whose model changes partway. Mixed versions cannot be compared.
 - Choose by `argmax`; tied maxima use sorted candidate names. Seeded hosted sampling is not implemented.
 - Read the key from the configured environment variable, `TYPESAFE_API_KEY` by default. Key-file loading is not implemented. The runner removes the hosted key from the game's environment. Never write it to configuration, logs, tapes, or exception text.
 - Treat `probabilities` as the model's judgment over the candidate descriptions. It is not the probability that the action succeeds. Confidence definitions also differ between models: Jev documents `(pmax − 1/n) / (1 − 1/n)`, while Laya uses `1 − H(p) / log(n)`. Do not reuse a threshold across deciders.
