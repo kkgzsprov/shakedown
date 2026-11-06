@@ -1,0 +1,98 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1793949044856,
+  "projectRoot": "C:\\Users\\kkgzsprov\\AppData\\Roaming\\RayPod\\worker\\fleet\\worktrees\\6fcea8a9696a0286\\8d859349f3b85aefcb1fb97e0433e3c4\\343af09e-0a8",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "pyproject.toml"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "pytest",
+    "lintCommand": "ruff check",
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "examples",
+      "src",
+      "tests"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 10,
+      "lastAccessed": 1793949044826,
+      "keyFiles": [
+        "01-overview.md",
+        "02-architecture.md",
+        "03-adapter-protocol.md",
+        "04-deciders.md",
+        "05-planner-and-skill.md"
+      ]
+    },
+    "examples": {
+      "path": "examples",
+      "purpose": "Example code",
+      "fileCount": 1,
+      "lastAccessed": 1793949044826,
+      "keyFiles": [
+        "__init__.py"
+      ]
+    },
+    "skill": {
+      "path": "skill",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1793949044826,
+      "keyFiles": []
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1793949044827,
+      "keyFiles": []
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 41,
+      "lastAccessed": 1793949044827,
+      "keyFiles": [
+        "batch_game.py",
+        "fake_game.py",
+        "planner_cli_fixture.py",
+        "planner_schema_fixture.py",
+        "test_aggregate.py"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}
