@@ -17,11 +17,13 @@ A bot player in Shakedown is three pieces of software, each running at its own r
 
 | Layer | Who | When | Produces | Never does |
 |---|---|---|---|---|
-| Planner (System 2) | An LLM: Claude Code, Codex CLI, or a mock | Before a campaign and between batches of runs | Test plan, hypotheses, profile instructions, tuning ranges, reports, bug drafts | Run during play, emit input, change game defaults |
-| Decider (System 1) | A decision model, a random baseline, a game rule, or a tape | At decision points during a run (events, plus a time cap such as 2 Hz of game time) | One choice among legal candidates, with probabilities | Compute coordinates, aim, judge legality |
+| Planner | An LLM: Claude Code, Codex CLI, or a mock | Before a campaign and between batches of runs | Test plan, hypotheses, profile instructions, tuning ranges, reports, bug drafts | Run during play, emit input, change game defaults |
+| Decider | A decision model, a random baseline, a game rule, or a tape | At decision points during a run (events, plus a time cap such as 2 Hz of game time) | One choice among legal candidates, with probabilities | Compute coordinates, aim, judge legality |
 | Executor | Game-side code in the adapter | Every simulation step | Keyboard, mouse, or controller events through the same input path a player uses | Choose tactics |
 
 The planner sets goals and temperament. The decider chooses within the options the game offers. The executor carries out the choice frame by frame. Code-level oracles watch every step, and a human approves goals and any change to the game.
+
+The layers are separated by decision granularity and rate, not by a mode of thought. They resemble the System 2/System 1 tiers of some robot architectures, but the analogy is loose: the planner is an experiment loop outside play, not the player's deliberation, and lockstep removes the decider's latency from game time.
 
 ## 1.3 Why the game pauses for the decider
 

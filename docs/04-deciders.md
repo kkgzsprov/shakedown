@@ -1,6 +1,6 @@
 **English** | [한국어](ko/04-deciders.md)
 
-# 4. Deciders (System 1)
+# 4. Deciders
 
 A decider takes one `decide` request and returns one choice with probabilities. It runs in the bridge process. A game may also have an in-process `rule` decider (section 3.2), which needs no bridge.
 

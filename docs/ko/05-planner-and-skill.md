@@ -1,6 +1,6 @@
 [English](../05-planner-and-skill.md) | **한국어**
 
-# 5. 플래너(planner, System 2)와 에이전트 스킬
+# 5. 플래너(planner)와 에이전트 스킬
 
 ## 5.1 플래너 백엔드
 

@@ -1,6 +1,6 @@
 **English** | [한국어](ko/05-planner-and-skill.md)
 
-# 5. Planner (System 2) and the agent skill
+# 5. Planner and the agent skill
 
 ## 5.1 Planner backends
 

@@ -9,8 +9,8 @@ Status: M0–M7 have implementation paths. Live planner/provider qualification, 
 | [1. Overview](01-overview.md) | What Shakedown does, the three layers, why the game pauses, evidence so far, related work |
 | [2. Architecture](02-architecture.md) | Processes, components, repository layout, `shakedown.toml`, run directory |
 | [3. Adapter and wire protocol](03-adapter-protocol.md) | What a game must implement, the JSON Lines protocol, exit codes, conformance checks |
-| [4. Deciders](04-deciders.md) | The System 1 interface, backends, failure handling, budgets |
-| [5. Planner and agent skill](05-planner-and-skill.md) | The System 2 steps, approval gates, the skill for coding agents |
+| [4. Deciders](04-deciders.md) | The decider interface, backends, failure handling, budgets |
+| [5. Planner and agent skill](05-planner-and-skill.md) | The planner steps, approval gates, the skill for coding agents |
 | [6. Oracles, exploration, and triage](06-oracles-and-triage.md) | How bugs are flagged, found, grouped, and reproduced |
 | [7. Balance loop](07-balance-loop.md) | Tuning keys, search, holdout seeds, the proposal gate |
 | [8. Example game: tinyraid](08-example-game.md) | The bundled game, its adapter, seeded bugs, the benchmark |
@@ -23,8 +23,8 @@ Status: M0–M7 have implementation paths. Live planner/provider qualification, 
 | Run | One game session from start to death, extraction, or time limit |
 | Batch | A set of runs over seeds, profiles, maps, and tuning candidates |
 | Campaign | Several batches toward approved targets, with planner revisions between them |
-| Planner | System 2: an LLM that plans and reports between batches |
-| Decider | System 1: chooses one legal candidate at each decision point |
+| Planner | An LLM that plans and reports between batches |
+| Decider | Chooses one legal candidate at each decision point |
 | Executor | Game-side code that turns a choice into input every step |
 | Adapter | All game-side Shakedown code: observation, candidates, executor, reflexes, oracles, pause |
 | Candidate | A legal action of a few seconds, named by kind and target |

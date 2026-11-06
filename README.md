@@ -10,8 +10,8 @@ An AI playtesting pipeline for games, with an offline test path. A game-side exe
 
 The full design has three layers, each working at a different speed. The planner runs between batches; gameplay uses offline deciders by default and can opt into the configured Jev backend:
 
-- **Planner (System 2).** An LLM such as Claude Code or Codex writes the test campaign between batches of runs. It picks player profiles, states hypotheses, and sets the tuning ranges to explore. It is never called during play.
-- **Decider (System 1).** A fast decision model chooses one tactic from a list of legal options that your game builds. It does not compute coordinates or aim. A random baseline, a game rule, and a tape replayer work with no network.
+- **Planner.** An LLM such as Claude Code or Codex writes the test campaign between batches of runs. It picks player profiles, states hypotheses, and sets the tuning ranges to explore. It is never called during play.
+- **Decider.** A fast decision model chooses one tactic from a list of legal options that your game builds. It does not compute coordinates or aim. A random baseline, a game rule, and a tape replayer work with no network.
 - **Executor.** Code in your game turns the chosen tactic into keyboard and mouse input every frame, through the same input path a human player uses. It is part of a per-game adapter; the bundled [Shakedown skill](skill/shakedown/SKILL.md) provides guides and transport skeletons for writing one.
 
 Game time pauses while the decider thinks, so model latency never changes the outcome. Each answer is written to a tape, so any run can be replayed exactly without calling the model again.
