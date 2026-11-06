@@ -4,7 +4,7 @@
 
 게임용 AI 플레이테스터다. LLM이 테스트 캠페인(campaign)을 계획하고, 빠른 결정 모델이 전술을 고르고, 게임 쪽 실행기(executor)가 실제 입력 경로로 게임을 플레이한다. 모든 결정을 테이프(tape)에 기록하므로 어떤 버그든 결정론적으로 재생된다.
 
-> 상태: 설계 단계. 아직 실행되는 코드는 없다. [설계 문서](docs/ko/README.md)와 [로드맵](docs/ko/09-roadmap.md)을 참고한다.
+> 상태: 초기 단계. 마일스톤 M0(와이어 프로토콜, 브리지, `random`·`mock`·`tape` 디사이더)을 구현했고 가짜 게임으로 시험했다. 나머지는 아직 설계다. [설계 문서](docs/ko/README.md)와 [로드맵](docs/ko/09-roadmap.md)을 참고한다.
 
 ## 동작 방식
 
@@ -18,10 +18,27 @@ Shakedown은 봇 플레이어를 세 계층으로 돌리며, 계층마다 동작
 
 코드 수준의 오라클(oracle)이 끼인 플레이어, 순간이동, 범위를 벗어난 스탯, 크래시를 검사한다. 모든 발견(finding)에는 시드(seed), 리플레이 파일, 그리고 선택적으로 짧은 영상이 붙는다. 배치 사이에는 최적화기가 밸런스 변경을 제안한다. 제안은 보류 시드(holdout seed)에서 검증한 뒤 패치로 작성하며, 사람 없이는 적용하지 않는다.
 
-## 요구 사항 (계획)
+## 요구 사항
 
-- Shakedown 쪽: Python 3 표준 라이브러리.
+- Shakedown 쪽: Python 3.11 이상, 표준 라이브러리만.
 - 시드에서 시작해 고정 시뮬레이션 스텝으로 헤드리스 실행이 가능하고, 자기 시계를 멈출 수 있는 게임. 전체 계약은 설계 문서 3장에 있다.
+
+## 돌려 보기
+
+테스트에는 네트워크도 설치도 필요 없다.
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+`mock` 디사이더로 가짜 게임에 브리지를 붙여 돌린 뒤, 그 실행을 테이프로 재생한다.
+
+```bash
+PYTHONPATH=src python -m shakedown bridge --decider mock --run-dir runs/a -- python tests/fake_game.py --seed 3
+PYTHONPATH=src python -m shakedown bridge --decider tape --tape runs/a/decision_tape.jsonl --run-dir runs/b -- python tests/fake_game.py --seed 3
+```
+
+실행 디렉터리마다 `decision_tape.jsonl`, `bridge_summary.json`, `stdout.log`가 남는다.
 
 ## 라이선스
 

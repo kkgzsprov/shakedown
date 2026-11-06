@@ -127,6 +127,8 @@ Rules:
 - The game flushes stdout right after each line. In the prototype, stdout to a pipe was fully buffered and the two processes deadlocked until a flush was added.
 - `source` is one of `random`, `mock`, `tape`, `jev`, `cache`, or `fallback`.
 - The request hash covers `state`, the sorted `candidates`, `order_seed`, `profile`, and `step`. It excludes run IDs and wall-clock values, which would make every rerun look like a divergence.
+- The hash is the SHA-256 hex digest of the canonical JSON of an object holding exactly those five fields: keys sorted, separators `,` and `:` with no spaces, non-ASCII characters written as UTF-8 rather than `\u` escapes, and NaN or Infinity rejected. An adapter that hashes in its own language (for `tape:` mode) must reproduce these bytes. Float text must match Python's shortest round-trip form, which is one more reason to keep `state` in integers.
+- The bridge holds the same contract from its side. A `decide` line that does not parse or validate, a second `hello`, or a `seq` that does not increase makes the bridge stop the game and exit with code 2. A request that does not match the tape when the bridge runs the `tape` decider makes it stop the game and exit with code 5.
 - The game exits with code 2 if `seq` does not match, `choice` is not a candidate, or the line does not parse. Contract errors are never skipped silently.
 
 ## 3.7 Executor and reflexes

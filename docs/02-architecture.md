@@ -45,7 +45,7 @@ One bridge process serves one game process. The orchestrator starts N pairs in p
 | Agent skill | Markdown + scripts | Lets a coding agent run all of the above and write an adapter (chapter 5) |
 | Example game | Python | A small real-time game with a reference adapter and switchable seeded bugs (chapter 8) |
 
-The Python side uses only the standard library (`json`, `subprocess`, `urllib`, `hashlib`, `concurrent.futures`, `random`, `statistics`). The prototype held to this rule, and it keeps installation to one `pip install`. An optional dependency such as Optuna would come only behind an extra and a separate decision.
+The Python side uses only the standard library (`json`, `subprocess`, `urllib`, `hashlib`, `concurrent.futures`, `random`, `statistics`). The prototype held to this rule, and it keeps installation to one `pip install`. An optional dependency such as Optuna would come only behind an extra and a separate decision. The minimum version is Python 3.11, the first release with `tomllib` for reading `shakedown.toml`. CI runs the tests, including a fixed request-hash value, on 3.11, 3.12 and 3.13.
 
 ## 2.3 Repository layout (planned)
 
@@ -67,7 +67,7 @@ shakedown/
     optimize.py         tuning search
     campaign.py         the planner ↔ optimizer loop with approval gates
     conformance.py      adapter conformance checks (section 3.10)
-    cli.py              `shakedown run | explore | triage | campaign | check-adapter`
+    cli.py              `shakedown bridge | run | explore | triage | campaign | check-adapter | bench`
   skill/shakedown/      SKILL.md and helper scripts for coding agents
   examples/tinyraid/    reference game and adapter (chapter 8)
   tests/

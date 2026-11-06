@@ -45,7 +45,7 @@
 | 에이전트 스킬 | Markdown + 스크립트 | 코딩 에이전트가 위의 모든 것을 돌리고 어댑터를 작성하게 한다 (5장) |
 | 예제 게임 | Python | 참조 어댑터와, 켜고 끌 수 있는 심어 둔 버그를 갖춘 작은 실시간 게임 (8장) |
 
-Python 쪽은 표준 라이브러리(`json`, `subprocess`, `urllib`, `hashlib`, `concurrent.futures`, `random`, `statistics`)만 쓴다. 프로토타입이 이 규칙을 지켰고, 이 규칙 덕분에 설치는 `pip install` 한 번으로 끝난다. Optuna 같은 선택적 의존성은 extra 뒤에서, 별도의 결정을 거쳐서만 들어온다.
+Python 쪽은 표준 라이브러리(`json`, `subprocess`, `urllib`, `hashlib`, `concurrent.futures`, `random`, `statistics`)만 쓴다. 프로토타입이 이 규칙을 지켰고, 이 규칙 덕분에 설치는 `pip install` 한 번으로 끝난다. Optuna 같은 선택적 의존성은 extra 뒤에서, 별도의 결정을 거쳐서만 들어온다. 최소 버전은 Python 3.11이다. `shakedown.toml`을 읽는 `tomllib`이 3.11부터 들어 있기 때문이다. CI는 고정된 요청 해시 값을 포함한 테스트를 3.11, 3.12, 3.13에서 돌린다.
 
 ## 2.3 저장소 구조 (계획)
 
@@ -67,7 +67,7 @@ shakedown/
     optimize.py         tuning search
     campaign.py         the planner ↔ optimizer loop with approval gates
     conformance.py      adapter conformance checks (section 3.10)
-    cli.py              `shakedown run | explore | triage | campaign | check-adapter`
+    cli.py              `shakedown bridge | run | explore | triage | campaign | check-adapter | bench`
   skill/shakedown/      SKILL.md and helper scripts for coding agents
   examples/tinyraid/    reference game and adapter (chapter 8)
   tests/

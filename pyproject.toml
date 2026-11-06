@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shakedown"
+version = "0.0.1"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+shakedown = "shakedown.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}

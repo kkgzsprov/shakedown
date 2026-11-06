@@ -2,7 +2,7 @@
 
 # 1. Overview
 
-Status: design. No code in this repository runs yet. Everything below describes what will be built, and section 5 lists which parts already exist as a prototype elsewhere.
+Status: milestone M0 (protocol, bridge, offline deciders) runs and is tested against a fake game. Everything else below describes what will be built, and section 5 lists which parts already exist as a prototype elsewhere.
 
 ## 1.1 What Shakedown does
 

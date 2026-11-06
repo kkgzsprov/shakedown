@@ -4,7 +4,7 @@
 
 AI playtester for games: an LLM plans test campaigns, a fast decision model picks tactics, and a game-side executor plays through the real input path. Every decision is taped, so every bug replays deterministically.
 
-> Status: design. No code runs yet. See [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
+> Status: early. Milestone M0 (wire protocol, bridge, and the `random`, `mock` and `tape` deciders) is implemented and tested against a fake game. Everything else is still design. See [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
 
 ## How it works
 
@@ -18,10 +18,27 @@ Game time pauses while the decider thinks, so model latency never changes the ou
 
 Code-level oracles check for stuck players, teleports, out-of-range stats, and crashes. Every finding comes with its seed, a replay file, and optionally a short video. Between batches, an optimizer proposes balance changes. They are validated on held-out seeds, written as a patch, and never applied without a human.
 
-## Requirements (planned)
+## Requirements
 
-- Python 3 standard library for the Shakedown side.
+- Python 3.11 or later, standard library only, for the Shakedown side.
 - A game that can run headless on a fixed simulation step from a seed, and pause its own clock. Chapter 3 of the design lists the full contract.
+
+## Try it
+
+The tests need no network and no install:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Run the bridge against the fake game with the `mock` decider, then replay that run from its tape:
+
+```bash
+PYTHONPATH=src python -m shakedown bridge --decider mock --run-dir runs/a -- python tests/fake_game.py --seed 3
+PYTHONPATH=src python -m shakedown bridge --decider tape --tape runs/a/decision_tape.jsonl --run-dir runs/b -- python tests/fake_game.py --seed 3
+```
+
+Each run directory holds `decision_tape.jsonl`, `bridge_summary.json` and `stdout.log`.
 
 ## License
 

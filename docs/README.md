@@ -2,7 +2,7 @@
 
 # Shakedown design documents
 
-Status: design. These documents describe what will be built. The roadmap (chapter 9) says in what order.
+Status: M0 is implemented; the rest is design. These documents describe what is and will be built. The roadmap (chapter 9) says in what order.
 
 | Chapter | Read it for |
 |---|---|
