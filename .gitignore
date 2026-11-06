@@ -1,6 +1,46 @@
+# Python build output and local environments
 __pycache__/
+*.py[cod]
 *.egg-info/
 build/
 dist/
-runs/
 .venv/
+venv/
+env/
+.tox/
+.nox/
+
+# Test, lint, and coverage output
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Shakedown run output
+runs/
+
+# Agent orchestration state and local settings
+.omc/
+.omx/
+.claude/settings.local.json
+.claude/worktrees/
+.codex/sessions/
+.codex/log/
+
+# Local environment variables; keep shareable templates
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# OS metadata and editor temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
