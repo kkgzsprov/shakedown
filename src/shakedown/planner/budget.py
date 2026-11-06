@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation, localcontext
+import errno
 import json
 import os
 from pathlib import Path
@@ -89,7 +90,12 @@ class BudgetLedger:
             try:
                 descriptor = os.open(self.lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 break
-            except FileExistsError as error:
+            except (FileExistsError, PermissionError) as error:
+                # Windows exclusive creation can report EACCES during lock-file
+                # contention rather than the usual FileExistsError.
+                # Retry acquisition only; never remove or take over that lock.
+                if isinstance(error, PermissionError) and not (os.name == "nt" and error.errno == errno.EACCES):
+                    raise
                 if time.monotonic() >= deadline:
                     raise BudgetError("budget ledger is locked; no stale lock was removed") from error
                 time.sleep(.01)

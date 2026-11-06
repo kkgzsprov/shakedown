@@ -2,8 +2,10 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
+import errno
 import json
 import multiprocessing
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -184,6 +186,53 @@ class BudgetTests(unittest.TestCase):
             with self.assertRaisesRegex(BudgetError, "locked"):
                 ledger.reserve("blocked", .1)
         self.assertEqual(ledger.lock_path.read_text(), "previous owner")
+
+    def test_transient_windows_lock_access_denial_retries_exclusive_creation(self):
+        ledger = BudgetLedger(self.path, 1)
+        original_open = os.open
+        attempted = []
+        def opening(path, flags, mode=0o777):
+            if path == ledger.lock_path:
+                attempted.append(flags)
+                if len(attempted) == 1:
+                    raise PermissionError(errno.EACCES, "lock deletion pending")
+            return original_open(path, flags, mode)
+        with patch("shakedown.planner.budget.os.name", "nt"), \
+                patch("shakedown.planner.budget.os.open", side_effect=opening), \
+                patch("shakedown.planner.budget.time.sleep") as sleep:
+            ledger.reserve("after-contention", .1)
+        self.assertEqual(len(attempted), 2)
+        self.assertTrue(all(flags & os.O_CREAT and flags & os.O_EXCL for flags in attempted))
+        sleep.assert_called_once_with(.01)
+        self.assertFalse(ledger.lock_path.exists())
+        self.assertEqual(Decimal(ledger.remaining()), Decimal(".9"))
+
+    def test_permanent_windows_lock_denial_times_out_without_changing_ledger(self):
+        ledger = BudgetLedger(self.path, 1)
+        before = self.path.read_bytes()
+        denied = PermissionError(errno.EACCES, "access denied")
+        with patch("shakedown.planner.budget.os.name", "nt"), \
+                patch("shakedown.planner.budget.os.open", side_effect=denied), \
+                patch("shakedown.planner.budget.time.monotonic", side_effect=[0, 3]):
+            with self.assertRaises(BudgetError) as captured:
+                ledger.reserve("denied", .1)
+        self.assertIs(captured.exception.__cause__, denied)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertFalse(ledger.lock_path.exists())
+
+    def test_posix_and_other_permission_errors_are_not_lock_contention(self):
+        ledger = BudgetLedger(self.path, 1)
+        for platform, code in (("posix", errno.EACCES), ("nt", errno.EPERM)):
+            with self.subTest(platform=platform, code=code):
+                denied = PermissionError(code, "permission denied")
+                with patch("shakedown.planner.budget.os.name", platform), \
+                        patch("shakedown.planner.budget.os.open", side_effect=denied), \
+                        patch("shakedown.planner.budget.time.sleep") as sleep:
+                    with self.assertRaises(PermissionError) as captured:
+                        ledger.reserve("denied", .1)
+                self.assertIs(captured.exception, denied)
+                sleep.assert_not_called()
+        self.assertEqual(ledger.snapshot()["attempts"], [])
 
     def test_threads_cannot_overreserve_one_shared_ledger(self):
         ledger = BudgetLedger(self.path, .5, 10)
