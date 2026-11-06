@@ -28,6 +28,7 @@ import urllib.request
 import uuid
 
 from . import Decision, DeciderError
+from .jev_defaults import DEFAULT_JEV_MODEL
 from .random import RandomDecider
 from ..planner.budget import BudgetError, BudgetLedger
 from ..protocol import canonical_json, request_hash
@@ -134,7 +135,7 @@ class AdaptiveLimiter:
 class JevRuntime:
     """Shared ledger, cache and limiter for all hosted runs in one batch."""
     def __init__(self, settings: dict, ledger_path: Path, max_concurrency: int = 1):
-        self.model = settings.get("model")
+        self.model = settings.get("model", DEFAULT_JEV_MODEL)
         if type(self.model) is not str or re.fullmatch(r"jev-\d+\.\d+\.\d+", self.model) is None:
             raise ValueError("Jev requires an explicitly pinned jev-X.Y.Z model")
         self.endpoint = _endpoint(settings.get("endpoint", "https://api.typesafe.ai/v1/systemone"))

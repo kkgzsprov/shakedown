@@ -18,6 +18,21 @@ Game time pauses while the decider thinks, so model latency never changes the ou
 
 Code-level oracles check stuck players, teleports, and out-of-range stats; the runner records crashes and other invalid attempts. Triage distinguishes reproduced findings from missing or failed evidence and can make a replay-backed clip. The balance loop keeps search and holdout seeds separate and writes proposals for human review.
 
+## A live run
+
+![Four replay-verified 12-second tinyraid clips: Jev cautious, Jev aggressive, Jev looter, then the rule decider extracting](docs/media/live-playtest-codex-jev.gif)
+
+[MP4 version (47 s, H.264)](docs/media/live-playtest-codex-jev.mp4)
+
+This clip is from one exploratory campaign on 2026-11-06. It was not a qualification run. Codex (`gpt-6.1-sol`, medium reasoning) drafted the targets and a 36-run baseline campaign through `plan`. An operator approved both drafts. The campaign then ran Jev (`jev-1.13.0`) and the offline `rule` decider on 3 seeds × 2 maps × 3 profiles, 12 simulated seconds each. Every clip was made only after input replay reproduced the source run's events. The clips appear in this order: Jev cautious, Jev aggressive, Jev looter, then `rule` aggressive, which extracts. In the frames, the player is light blue, guards are red, crates are yellow (gray once looted), the door is brown, and the extraction zone is green.
+
+What the run showed:
+- All 36 runs were valid, and the oracles found nothing.
+- Jev made 247 decisions. 17 of them (6.9 %) fell back to `random`. Latency was p50 218 ms and p95 306 ms.
+- The profile instructions changed Jev's tactic mix: `hold`/`withdraw` for cautious, `hold`/`engage` for aggressive, mostly `search` for looter.
+- On outcomes, `rule` did better. It extracted in all six aggressive runs, while the Jev aggressive runs never moved.
+- Three seeds and 12 s runs are far too small to judge decider value (experiment E1 in the roadmap). This is an illustration, not evidence that a model decider helps.
+
 ## Requirements
 
 - Python 3.11 or later, standard library only, for the Shakedown side.
