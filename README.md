@@ -2,13 +2,13 @@
 
 # Shakedown
 
-An offline AI playtesting pipeline for games. A game-side executor plays through the ordinary input path, and Shakedown records decisions and inputs so supported deterministic failures can be reproduced. LLM campaign planning is the next milestone.
+An AI playtesting pipeline for games, with an offline test path. A game-side executor plays through the ordinary input path, and Shakedown records decisions and inputs so supported deterministic failures can be reproduced. The M4 planner drafts structured artifacts between runs and executes an approved baseline campaign.
 
-> Status: early. M0–M3 are implemented: protocol and offline deciders, tinyraid and replay, isolated batches and adapter checks, and the QA path with exploration, anomaly reports, verified triage, clips, and a controlled tinyraid benchmark. M4 and later remain design. See [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
+> Status: early. M0-M3 provide protocol and offline deciders, tinyraid and replay, isolated batches, adapter checks, and the QA path. M4 adds planner drafts, budget accounting, approval receipts, and one baseline campaign round. Live CLI qualification remains pending; M5 and later remain design. See [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
 
 ## How it works
 
-The full design has three layers, each working at a different speed. The planner integration starts at M4; current runs use offline deciders:
+The full design has three layers, each working at a different speed. The M4 planner runs between batches; gameplay still uses offline deciders:
 
 - **Planner (System 2).** An LLM such as Claude Code or Codex writes the test campaign between batches of runs. It picks player profiles, states hypotheses, and sets the tuning ranges to explore. It is never called during play.
 - **Decider (System 1).** A fast decision model chooses one tactic from a list of legal options that your game builds. It does not compute coordinates or aim. A random baseline, a game rule, and a tape replayer work with no network.
@@ -48,7 +48,7 @@ python -m examples.tinyraid --seed 7 --duration 12 --decider tape:runs/tinyraid-
 
 The install uses the existing build tools; install `setuptools` first if it is absent. `shakedown` is equivalent to `python -m shakedown` when Python's Scripts directory is on `PATH`. The example stays in this source checkout, so run its commands from the repository root.
 
-The bridge writes `decision_tape.jsonl`, `bridge_summary.json`, and `stdout.log`; the game writes the requested telemetry and input recording. [Chapter 8](docs/08-example-game.md) documents the fixed M1 seed matrix, bug fixtures, and optional PNG frames. The commands below cover batch execution, conformance, and M3 QA. The planner remains planned for M4.
+The bridge writes `decision_tape.jsonl`, `bridge_summary.json`, and `stdout.log`; the game writes the requested telemetry and input recording. [Chapter 8](docs/08-example-game.md) documents the fixed M1 seed matrix, bug fixtures, and optional PNG frames. The commands below cover batch execution, conformance, QA, and the M4 planner.
 
 ## Batch runs and adapter checks
 
@@ -84,6 +84,22 @@ Triage keeps `findings/index.json`, a summary, source hashes, deterministic `bug
 QA CLI exit codes describe the stage: `explore` returns 1 for execution/oracle findings or anomaly flags and 130 for interruption; `anomalies` returns 1 for flags; `triage` returns 1 when any signature is unreproduced or unmeasured. `bench` returns 0 only for a passing qualification gate, 1 for failed or unqualified coverage, and 130 for interruption. Configuration errors return 2.
 
 The controlled tinyraid benchmark uses disjoint search and holdout seeds and applies the same input-workflow probes to clean and single-fault games. See [chapter 8](docs/08-example-game.md#84-benchmark) for the full command, qualification rules, and the boundary between test-bed coverage and autonomous discovery in an unfamiliar game.
+
+## Planner drafts and approved campaigns
+
+M4 adds `plan`, `approve`, and `campaign`. Planning supports `targets`, `campaign`, `revise`, `bug`, and `report`; use `--backend mock` for offline drafts or explicitly configure a CLI backend. Input files are passed with repeated `--input NAME=PATH` arguments. Each draft is schema-checked and semantically validated before it can be used. [Chapter 5](docs/05-planner-and-skill.md) describes the command contract, budgets, and backend restrictions.
+
+```text
+python -m shakedown plan targets --config CONFIG --input design_notes=DESIGN_FILE --output DRAFT_DIR --backend mock
+python -m shakedown approve targets --config CONFIG --artifact TARGETS_JSON --receipt TARGETS_RECEIPT --approved
+python -m shakedown plan campaign --config CONFIG --input design_notes=DESIGN_FILE --targets TARGETS_JSON --targets-approval TARGETS_RECEIPT --output CAMPAIGN_DIR --backend mock
+python -m shakedown approve campaign --config CONFIG --artifact CAMPAIGN_JSON --receipt CAMPAIGN_RECEIPT --targets TARGETS_JSON --targets-approval TARGETS_RECEIPT --approved
+python -m shakedown campaign --config CONFIG --campaign CAMPAIGN_JSON --approval CAMPAIGN_RECEIPT --targets TARGETS_JSON --targets-approval TARGETS_RECEIPT --output RUN_DIR --approved
+```
+
+The uppercase values are paths supplied by the operator. The first plan writes `DRAFT_DIR/targets.json`; the second writes `CAMPAIGN_DIR/campaign.json`. Review each artifact before creating its approval receipt. Receipts bind approval to the artifact and configuration contents; they are unsigned operator assertions, not authenticated signatures. Changing approved content requires a new receipt.
+
+An M4 campaign executes one baseline round. Numeric optimization, iterative search, holdout qualification of a proposed balance change, and applying new defaults remain M5 work. Planner calls reserve a configured amount in a ledger before execution; missing cost data consumes the entire reservation. These reservations bound Shakedown's admitted calls, not the provider's final bill. Codex requires explicit `codex_mode = "restricted"` opt-in and does not offer a verified tool-free guarantee. Manual calls to the installed CLI backends require a separately authorized budget; this milestone's offline validation does not establish live-provider behavior.
 
 ## License
 

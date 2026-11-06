@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shakedown targets v1 strict wire",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 1
+          },
+          "map": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "rationale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "profile",
+          "map",
+          "min",
+          "max",
+          "rationale"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "targets",
+    "notes"
+  ],
+  "additionalProperties": false
+}

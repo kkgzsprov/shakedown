@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shakedown revise v1 strict wire",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "search_ranges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "min",
+              "max"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "continue",
+        "stop"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "clipping": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scope": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requested_min": {
+            "type": "number"
+          },
+          "requested_max": {
+            "type": "number"
+          },
+          "applied_min": {
+            "type": "number"
+          },
+          "applied_max": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "scope",
+          "requested_min",
+          "requested_max",
+          "applied_min",
+          "applied_max"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "hypotheses",
+    "search_ranges",
+    "decision",
+    "reason",
+    "clipping"
+  ],
+  "additionalProperties": false
+}

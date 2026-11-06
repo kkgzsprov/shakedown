@@ -2,15 +2,14 @@
 
 # Shakedown
 
-게임용 오프라인 AI 플레이테스트 파이프라인이다. 게임 쪽 실행기가 일반 입력 경로로 플레이하고, Shakedown은 결정과 입력을 기록해 지원되는 결정론적 실패를 재현한다. LLM 캠페인 계획 연동은 다음 마일스톤이다.
+오프라인 검증 경로를 제공하는 게임용 AI 플레이테스트 파이프라인이다. 게임 쪽 실행기가 일반 입력 경로로 플레이하고, Shakedown은 결정과 입력을 기록해 지원되는 결정론적 실패를 재현한다. M4 플래너는 실행 사이에 구조화된 초안을 만들고, 승인된 기준선 캠페인을 실행한다.
 
-> 상태: 초기 단계. M0~M3를 구현했다. 프로토콜·오프라인 디사이더, tinyraid·재생, 격리 배치·어댑터 검사에 더해 탐색·이상 신호·검증된 분류와 재현·클립·QA CLI 종료 코드는 단계별 의미를 가진다. `explore`는 실행·오라클 발견이나 이상 신호가 있으면 1, 중단은 130이고, `anomalies`는 신호가 있으면 1이다. `triage`는 재현 실패나 미측정 시그니처가 남으면 1이다. `bench`는 합격 게이트를 통과해야 0이며, 실패·미자격은 1, 중단은 130이다. 설정 오류는 2다.
+> 상태: 초기 단계. M0~M3는 프로토콜·오프라인 디사이더, tinyraid·재생, 격리 배치·어댑터 검사와 QA 경로를 제공한다. M4는 플래너 초안, 예산 기록, 승인 영수증과 기준선 캠페인 한 라운드를 추가한다. 실제 CLI 모델 호출 검증은 남아 있으며 M5 이후는 설계 단계다. [설계 문서](docs/ko/README.md)와 [로드맵](docs/ko/09-roadmap.md)을 참고한다.
 
-통제된 tinyraid 벤치마크를 제공한다. M4 이후는 설계 단계다. [설계 문서](docs/ko/README.md)와 [로드맵](docs/ko/09-roadmap.md)을 참고한다.
 
 ## 동작 방식
 
-전체 설계는 동작 속도가 다른 세 계층으로 구성된다. 플래너 연동은 M4부터이며, 현재 실행에는 오프라인 디사이더를 사용한다.
+전체 설계는 동작 속도가 다른 세 계층으로 구성된다. M4 플래너는 배치 사이에서 동작하며, 게임 플레이에는 오프라인 디사이더를 사용한다.
 
 - **플래너(planner, System 2).** Claude Code나 Codex 같은 LLM이 실행(run) 배치(batch) 사이에 테스트 캠페인을 작성한다. 플레이어 프로필(profile)을 고르고, 가설을 세우고, 탐색할 튜닝(tuning) 범위를 정한다. 플레이 중에는 호출하지 않는다.
 - **디사이더(decider, System 1).** 빠른 결정 모델이 게임이 만든 합법적 선택지 목록에서 전술 하나를 고른다. 좌표 계산이나 조준은 하지 않는다. 무작위 기준선, 게임 규칙, 테이프 재생기는 네트워크 없이 동작한다.
@@ -50,7 +49,7 @@ python -m examples.tinyraid --seed 7 --duration 12 --decider tape:runs/tinyraid-
 
 설치는 기존 빌드 도구를 사용한다. `setuptools`가 없으면 먼저 설치한다. Python의 Scripts 디렉터리가 `PATH`에 있으면 `python -m shakedown` 대신 `shakedown`을 쓸 수 있다. 예제는 소스 작업본에 있으므로 저장소 루트에서 명령을 실행한다.
 
-브리지는 `decision_tape.jsonl`, `bridge_summary.json`, `stdout.log`를 쓰고, 게임은 지정한 텔레메트리와 입력 기록을 쓴다. 고정된 M1 시드 조합, 버그 픽스처, 선택적 PNG 프레임은 [8장](docs/ko/08-example-game.md)에 있다. 아래 명령은 배치·적합성 검사와 M3 QA를 다룬다. 플래너는 M4에서 구현한다.
+브리지는 `decision_tape.jsonl`, `bridge_summary.json`, `stdout.log`를 쓰고, 게임은 지정한 텔레메트리와 입력 기록을 쓴다. 고정된 M1 시드 조합, 버그 픽스처, 선택적 PNG 프레임은 [8장](docs/ko/08-example-game.md)에 있다. 아래 명령은 배치·적합성 검사, QA와 M4 플래너를 다룬다.
 
 ## 배치 실행과 어댑터 검사
 
@@ -83,7 +82,25 @@ python -m shakedown triage --config examples/tinyraid/shakedown.toml --batch run
 
 분류·재현 단계는 `findings/index.json`, 요약, 소스 해시, 결정론적 `bug_draft.json`, 재현 시도를 남긴다. 오라클·이상 신호 확인에는 정책 또는 테이프 재현과 독립 입력 재생이 모두 필요하다. 기존 시그니처는 중복 집계하며 조용히 재시도하지 않는다. 초안은 LLM을 호출하거나 원인을 지어내지 않는다. `--clips`를 주면 입력 재생이 일치한 뒤 애니메이션 GIF를 만들 수 있고, 별도 인코더를 설정해 다른 형식으로 출력할 수 있다.
 
+QA CLI 종료 코드는 단계별 의미를 가진다. `explore`는 실행·오라클 발견이나 이상 신호가 있으면 1, 중단은 130이고, `anomalies`는 신호가 있으면 1이다. `triage`는 재현 실패나 미측정 시그니처가 남으면 1이다. `bench`는 합격 게이트를 통과해야 0이며, 실패·미자격은 1, 중단은 130이다. 설정 오류는 2다.
+
 통제된 tinyraid 벤치마크는 개발용 시드와 보류 시드를 분리하고, 정상 게임과 버그 하나만 켠 게임에 같은 입력 워크플로 프로브를 적용한다. 전체 명령, 합격 기준, 시험대의 커버리지와 처음 보는 게임의 자율 탐색 사이 경계는 [8장](docs/ko/08-example-game.md#84-벤치마크)에 있다.
+
+## 플래너 초안과 승인된 캠페인
+
+M4는 `plan`, `approve`, `campaign`을 제공한다. `plan` 단계는 `targets`, `campaign`, `revise`, `bug`, `report`이며, `--backend mock`으로 오프라인 초안을 만들 수 있다. 이름이 붙은 입력 파일은 `--input NAME=PATH`를 반복해 전달한다. 초안은 스키마와 의미 제약을 검사한다. 전체 명령·설정 계약은 [5장](docs/ko/05-planner-and-skill.md)에 있다.
+
+```text
+python -m shakedown plan targets --config CONFIG --input design_notes=DESIGN_FILE --output DRAFT_DIR --backend mock
+python -m shakedown approve targets --config CONFIG --artifact TARGETS_JSON --receipt TARGETS_RECEIPT --approved
+python -m shakedown plan campaign --config CONFIG --input design_notes=DESIGN_FILE --targets TARGETS_JSON --targets-approval TARGETS_RECEIPT --output CAMPAIGN_DIR --backend mock
+python -m shakedown approve campaign --config CONFIG --artifact CAMPAIGN_JSON --receipt CAMPAIGN_RECEIPT --targets TARGETS_JSON --targets-approval TARGETS_RECEIPT --approved
+python -m shakedown campaign --config CONFIG --campaign CAMPAIGN_JSON --approval CAMPAIGN_RECEIPT --targets TARGETS_JSON --targets-approval TARGETS_RECEIPT --output RUN_DIR --approved
+```
+
+대문자 값은 운영자가 지정할 경로다. 첫 초안은 `DRAFT_DIR/targets.json`, 다음 초안은 `CAMPAIGN_DIR/campaign.json`에 저장된다. 내용을 검토한 뒤 승인 영수증을 만든다. 영수증은 결과물과 설정 내용에 승인을 연결하지만, 승인자 신원을 인증하는 서명은 아니다. 승인된 내용을 바꾸면 다시 승인해야 한다.
+
+M4 캠페인은 기준선 한 라운드만 실행한다. 수치 최적화, 반복 탐색, 밸런스 변경의 보류 시드 검증과 기본값 적용은 M5 범위다. 플래너 호출 전 예산 원장에 금액을 예약하며, 비용을 알 수 없으면 예약액 전부를 사용한 것으로 처리한다. 예약은 Shakedown이 허용할 호출을 제한하며 공급자의 최종 청구액 상한을 보장하지 않는다. Codex는 `codex_mode = "restricted"`를 명시해야 하며 도구 사용이 완전히 제거됐다는 보장은 없다. 실제 CLI 호출 검증에는 별도로 승인된 예산이 필요하고, 오프라인 검증이 이를 대신하지 않는다.
 
 ## 라이선스
 

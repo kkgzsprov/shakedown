@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shakedown campaign v1",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "experiments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "hypothesis": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "maps": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "seeds": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1
+          },
+          "tuning_ranges": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "min": {
+                  "type": "number"
+                },
+                "max": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "min",
+                "max"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "hypothesis",
+          "profiles",
+          "maps",
+          "seeds",
+          "tuning_ranges"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "profile_instructions": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 600
+      },
+      "minProperties": 1
+    },
+    "search_ranges": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "min",
+          "max"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "batch_size": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000
+    },
+    "rounds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "stop_conditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "hypotheses",
+    "experiments",
+    "profile_instructions",
+    "search_ranges",
+    "batch_size",
+    "rounds",
+    "stop_conditions"
+  ],
+  "additionalProperties": false
+}

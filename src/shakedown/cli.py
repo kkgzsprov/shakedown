@@ -102,7 +102,64 @@ def main(argv: list[str] | None = None) -> int:
     benchmark.add_argument("--deciders", type=_backends)
     benchmark.add_argument("--cases", help="comma-separated fault cases; a subset is not a full qualification")
     benchmark.add_argument("--clips", action="store_true")
+    plan = subparsers.add_parser("plan", help="draft a between-run planner document")
+    plan.add_argument("step", choices=("targets", "campaign", "revise", "bug", "report"))
+    plan.add_argument("--config", type=Path, default=Path("shakedown.toml"))
+    plan.add_argument("--input", action="append", default=[], metavar="NAME=PATH")
+    plan.add_argument("--output", type=Path, required=True)
+    plan.add_argument("--backend", choices=("mock", "claude-cli", "codex-cli"))
+    plan.add_argument("--targets", type=Path)
+    plan.add_argument("--targets-approval", type=Path)
+    plan.add_argument("--budget-usd", type=float)
+    plan.add_argument("--call-budget-usd", type=float)
+    plan.add_argument("--max-calls", type=int)
+    plan.add_argument("--ledger", type=Path)
+    approval = subparsers.add_parser("approve", help="record an explicit operator approval")
+    approval.add_argument("kind", choices=("targets", "campaign"))
+    approval.add_argument("--config", type=Path, default=Path("shakedown.toml"))
+    approval.add_argument("--artifact", type=Path, required=True)
+    approval.add_argument("--receipt", type=Path, required=True)
+    approval.add_argument("--approved", action="store_true")
+    approval.add_argument("--targets", type=Path)
+    approval.add_argument("--targets-approval", type=Path)
+    campaign = subparsers.add_parser("campaign", help="execute an approved single baseline round")
+    campaign.add_argument("--config", type=Path, default=Path("shakedown.toml"))
+    campaign.add_argument("--campaign", type=Path, required=True)
+    campaign.add_argument("--approval", type=Path, required=True)
+    campaign.add_argument("--targets", type=Path, required=True)
+    campaign.add_argument("--targets-approval", type=Path, required=True)
+    campaign.add_argument("--output", type=Path, required=True)
+    campaign.add_argument("--approved", action="store_true")
+    campaign.add_argument("--max-runs", type=int, default=1000)
     args = parser.parse_args(argv)
+    if args.command in {"plan", "approve", "campaign"}:
+        from .config import load_config
+        from .planner.engine import approve_plan, run_step
+        try:
+            config = load_config(args.config)
+            if args.command == "plan":
+                inputs = {}
+                for entry in args.input:
+                    name, separator, value = entry.partition("=")
+                    if not separator or not name or not value or name in inputs:
+                        raise ValueError("inputs must be unique NAME=PATH arguments")
+                    inputs[name] = Path(value)
+                result = run_step(config, args.step, args.output, inputs=inputs,
+                    backend=args.backend, targets=args.targets, targets_approval=args.targets_approval,
+                    budget_usd=args.budget_usd, call_budget_usd=args.call_budget_usd,
+                    max_calls=args.max_calls, ledger_path=args.ledger)
+            elif args.command == "approve":
+                result = approve_plan(config, args.kind, args.artifact, args.receipt,
+                    approved=args.approved, targets=args.targets, targets_approval=args.targets_approval)
+            else:
+                from .planner.campaign import run_approved_campaign
+                result = run_approved_campaign(config, args.campaign, args.approval, args.output,
+                    approved=args.approved, targets=args.targets, targets_approval=args.targets_approval,
+                    max_runs=args.max_runs)
+            print(json.dumps(result, ensure_ascii=False, allow_nan=False))
+            return 0 if result.get("status", "passed") in {"passed", "completed"} else 1
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
     if args.command == "bench":
         from .bench import bench_tinyraid
         try:

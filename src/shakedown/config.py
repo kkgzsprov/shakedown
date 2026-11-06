@@ -208,7 +208,9 @@ def load_config(path: str | Path) -> ProjectConfig:
     tuning = _table(raw.get("tuning", {}), "tuning", {"keys", "candidates"})
     checks = _table(raw.get("checks", {}), "checks", {
         "oracle_args", "oracle_seconds", "oracle_kind", "visibility_command"})
-    planner = _table(raw.get("planner", {}), "planner", {"backend", "budget_usd"})
+    planner = _table(raw.get("planner", {}), "planner", {
+        "backend", "budget_usd", "call_budget_usd", "max_calls", "timeout_s",
+        "model", "command", "codex_mode", "ledger"})
     cwd = game.get("cwd", ".")
     if type(cwd) is not str or not cwd or "\x00" in cwd:
         raise ValueError("game.cwd must be a directory path")
@@ -237,9 +239,20 @@ def load_config(path: str | Path) -> ProjectConfig:
         raise ValueError("M2 batch deciders must be rule, mock, or random")
     _number(decider.get("budget_usd", 0), "decider.budget_usd")
     _number(planner.get("budget_usd", 0), "planner.budget_usd")
+    _number(planner.get("call_budget_usd", .5), "planner.call_budget_usd", strict=True)
+    _integer(planner.get("max_calls", 10), "planner.max_calls", 1)
+    _number(planner.get("timeout_s", 120), "planner.timeout_s", strict=True)
+    if planner.get("codex_mode", "disabled") not in {"disabled", "restricted"}:
+        raise ValueError("planner.codex_mode must be disabled or restricted")
+    if "model" in planner and (type(planner["model"]) is not str or not planner["model"].strip()):
+        raise ValueError("planner.model must be a nonempty model name")
+    if "command" in planner:
+        _argv(planner["command"], "planner.command")
+    if "ledger" in planner and (type(planner["ledger"]) is not str or not planner["ledger"]):
+        raise ValueError("planner.ledger must be a file path")
     if "backend" in planner and (type(planner["backend"]) is not str
                                   or planner["backend"] not in {"mock", "claude-cli", "codex-cli"}):
-        raise ValueError("unknown planner backend (planner execution is not implemented in M2)")
+        raise ValueError("unknown planner backend")
     instructions = (_file(path.parent, decider["instructions"], "decider.instructions").read_text(encoding="utf-8")
                     if "instructions" in decider else "")
     exit_codes = dict(EXIT_CODES)

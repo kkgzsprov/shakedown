@@ -6,7 +6,7 @@
 
 Each milestone ends with a check that passes on CI with no network and no key.
 
-Current implementation: M0–M3. M3 adds seeded coverage exploration, opportunity-based anomaly reports, persistent reproduction-backed triage, replay-verified clips, and the controlled `bench tinyraid` command. The primary benchmark separates search and holdout seeds and requires zero clean findings plus reproduced oracle/anomaly faults. M4 and later remain planned. Local validation and current-commit CI are separate evidence; inspect the actual run before claiming another platform passed.
+Current implementation: M0-M3 and the M4 implementation slice. M4 adds schema-checked planner drafts, offline mock and CLI backends, budget reservations, content-bound approval receipts, and single-round baseline campaigns. Offline validation and manual live-provider qualification are separate gates; no paid CLI calls have been used to establish this milestone. M5 and later remain planned. Local validation and current-commit CI are also separate evidence; inspect the actual run before claiming another platform passed.
 
 | Milestone | Contents | Done when |
 |---|---|---|
@@ -14,12 +14,12 @@ Current implementation: M0–M3. M3 adds seeded coverage exploration, opportunit
 | M1 tinyraid | Game, adapter, `rule` decider, oracles, telemetry, input recording and replay | C1 to C6 pass on tinyraid. The clean game gives no findings over the M1 seed set. |
 | M2 Batch runs | `shakedown.toml`, orchestrator, workers, aggregation, `check-adapter` | 60-run batch on tinyraid produces `metrics.json` with intervals. `check-adapter` reports C1 to C7. |
 | M3 QA path | Exploration, anomalies, triage, clips | `shakedown bench tinyraid` catches each oracle and anomaly bug alone and reproduces it, on held-out seeds |
-| M4 Planner | Planner steps and schemas, `claude-cli`, `codex-cli`, `mock` backends, approval gates | Both CLI backends pass every schema in a manual run. Mock passes on CI. |
+| M4 Planner | Planner steps and schemas, `claude-cli`, restricted opt-in `codex-cli`, and `mock`; budget ledger, approval receipts, one baseline campaign round | Offline schema, semantic, budget, approval, subprocess-fixture, and mock campaign tests pass. Both real CLI backends still require separately budgeted manual schema qualification; restricted Codex is not certified tool-free. |
 | M5 Balance | Key table, optimizer, campaign loop, holdout gate, patch output | A planted tuning target on tinyraid is recovered within its range on holdout seeds |
 | M6 Skill | `skill/shakedown/`, adapter templates, thin-executor mode | An agent with the skill writes a passing adapter for a second small game that it has not seen before |
 | M7 Hosted decider | `jev` backend, cache, budget, invalid-run rules | Latency, cost, and fallback reported for a tinyraid batch |
 
-M4 can be built in parallel with M2 and M3, using mock metrics. M7 is last on purpose: nothing before it needs a paid service.
+The M4 implementation can be validated with mock metrics and subprocess fixtures without a paid service. Its real CLI backend qualification is a separate manual gate with an explicit call budget. M7 remains last; all earlier gameplay deciders work offline. M4 does not implement M5 numeric optimization, iterative campaign search, holdout qualification of balance changes, or default application.
 
 ## 9.2 Experiments before a 1.0 release
 

@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shakedown report v1 strict wire",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "summary": {
+      "type": "string"
+    },
+    "anomalies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 1
+          },
+          "map": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ci95": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "n": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "metric",
+          "profile",
+          "map",
+          "value",
+          "ci95",
+          "n"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "proposed_defaults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "baseline": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "proposed": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "baseline",
+          "proposed",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "summary",
+    "anomalies",
+    "results",
+    "proposed_defaults",
+    "limitations"
+  ],
+  "additionalProperties": false
+}

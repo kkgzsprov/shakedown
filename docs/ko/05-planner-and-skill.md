@@ -4,15 +4,19 @@
 
 ## 5.1 플래너 백엔드
 
-플래너는 명령줄 도구로 호출하는 LLM이다. 실행(run) 안에서는 절대 호출하지 않는다.
+M4 플래너는 게임 실행 사이에 명령줄 LLM 또는 오프라인 `mock` 백엔드로 구조화된 초안을 만든다. 게임 실행 안에서는 호출하지 않는다. 기준선 캠페인 실행은 M4 범위이며, 최적화기·반복 밸런스 루프·기본값 변경은 M5 설계다.
 
 | 백엔드 | 호출 | 참고 |
 |---|---|---|
-| `claude-cli` | `claude -p --output-format json --json-schema <file> --max-budget-usd <n>` | 한 번 호출할 때 시스템 프롬프트 캐시 생성에만 약 $0.4가 든다(프로토타입 측정, 2026-10-29). 이를 감안해 예산을 정한다. |
-| `codex-cli` | `codex exec --output-schema <file> -o <file> -s read-only` | 엄격한 스키마 모드는 자유 형식 키 맵을 거부한다. Shakedown은 Codex에 맵을 `[{key, value}]` 배열로 보내고, 답을 다시 맵으로 변환한다. |
+| `claude-cli` | `claude -p --output-format json --json-schema <JSON 문자열> --max-budget-usd <n>` | 결과 envelope의 `structured_output`을 읽는다. 내장 도구·상속 MCP·사용자 확장을 제한한다. 비용 상한은 응답 후 검사하는 추정치다. |
+| `codex-cli` | `codex exec --output-schema <file> -o <file> -s read-only --json` | `codex_mode = "restricted"`를 명시해야 한다. 도구·설정을 추가 제한하지만 읽기 전용은 도구 제거 보장이 아니다. 토큰 사용량만으로 달러 청구액을 확정하지 않는다. |
 | `mock` | 입력에서 만든 고정 JSON | 네트워크 없이 파이프라인 전체를 돌린다. |
 
-모든 백엔드의 출력은 같은 JSON Schema로 검사한다. 검사에 실패하면 플래너에게 한 번 더 요청한다. 두 번째도 실패하면 해당 단계를 멈춘다. 플래너에게는 도구 권한을 주지 않으며, 오케스트레이터가 입력 파일을 프롬프트에 붙여 넣는다.
+모든 백엔드의 출력은 단계별 스키마와 의미 제약으로 검사한다. 스키마 오류는 한 번 재시도하고 두 번째도 실패하면 멈춘다. 각 시도는 호출 수와 예산을 사용한다. CLI 내부 재시도가 따로 있을 수 있으므로 이 제한은 공급자 요청 수가 아니라 Shakedown 시도 수다. 오케스트레이터는 입력 파일을 프롬프트에 붙이며 플래너에 Shakedown 실행 도구를 제공하지 않는다.
+
+Claude의 `--tools ""`는 내장 도구를 제거하며 MCP에는 별도의 빈 strict 설정이 필요하다. Codex restricted 모드는 일부 기능을 끄고 JSONL 도구 사용 이벤트를 검사해 해당 결과를 거부한다. 사후 검사는 이미 실행된 도구의 부작용을 되돌리지 못한다. 빈 작업 디렉터리와 사용자 설정 생략도 운영체제 격리나 관리 정책 제거를 보장하지 않는다.
+
+2026-11-06 로컬 Codex 0.166.0과 Claude Code 2.1.318의 도움말 및 공식 문서를 대조했으며 모델 호출은 하지 않았다. [Codex 비대화형 실행](https://developers.openai.com/codex/noninteractive), [Codex 설정](https://developers.openai.com/codex/config-reference), [Claude CLI](https://code.claude.com/docs/en/cli-reference), [Claude 구조화 출력](https://code.claude.com/docs/en/headless)을 참고한다. 실제 CLI별 스키마 검증은 별도 수동 게이트로 남는다.
 
 ## 5.2 플래너 단계
 
@@ -22,11 +26,11 @@
 | `campaign` | 디자인 노트, 튜닝(tuning) 키 표(key table), 승인된 목표, 이전 보고서 | `campaign.json`: 실험, 가설, 프로필별 지시문, 튜닝 탐색 범위, 배치(batch) 크기 |
 | `revise` | `metrics.json`, 레이블, 이상 신호(anomaly) | `revision.json`: 갱신한 가설, 키 표 안의 다음 탐색 범위, 중단 또는 계속 |
 | `bug` | 실행 인자, 오라클(oracle) 줄, 마지막 텔레메트리 이벤트 | `bug_draft.json`: 제목, 재현 명령, 기대 결과와 실제 결과, 의심 원인 |
-| `report` | 모든 지표, 수정 이력, 보류 시드(holdout seed) 결과 | 사람이 읽는 `report.md`. 제안하는 기본값 변경은 별도 표에 둔다. |
+| `report` | 지표와 확보한 보조 증거 | `report.json`과 사람이 읽는 `report.md`. 제안으로 기본값을 적용하지 않는다. |
 
 플래너가 플레이에 영향을 주는 수단은 프로필 지시문뿐이다. 지시문은 한 실행의 모든 결정에서 디사이더(decider)의 질문 앞에 붙는다. 길이는 프로필당 600자로 제한하며, 지시문으로 후보(candidate)나 새 행동을 추가할 수 없다. 스키마는 길이만 검사하므로, 승인 전에 사람이 `campaign.json`을 읽는다.
 
-플래너가 키 표 밖으로 제안한 범위는 오케스트레이터가 잘라 내고, 그 내역을 `revision.json`에 기록한다.
+제안 범위는 설정된 키 표의 제약을 만족해야 채택한다. M4는 제안을 기록하되 수치 탐색이나 기본값 적용을 하지 않는다. 향후 루프의 범위 잘라 내기와 수정 이력은 M5 범위다.
 
 ## 5.3 플래너가 정하지 않는 것
 
@@ -39,15 +43,35 @@
 
 | 게이트 | 기본값 | 이유 |
 |---|---|---|
-| 캠페인(campaign) 실행 전 | `campaign.json`을 승인해야 한다(`--approved`) | 지시문과 범위가 모든 실행의 방향을 정한다 |
-| 비용 지출 전 | 디사이더와 플래너의 예산을 따로 둔다(`budget_usd`) | 둘 다 호출마다 과금된다 |
-| 게임 변경 전 | Shakedown은 패치와 보고서를 쓴다. 커밋은 하지 않는다. | 밸런스 변경은 디자인 결정이다 |
+| 캠페인 실행 전 | 목표·캠페인 승인 영수증과 실행 시 `--approved` | 지시문과 범위가 실행 방향을 정한다 |
+| 플래너 비용 지출 전 | 호출 전에 예산 원장에 금액 예약 | 실패한 시도와 미확인 비용을 회계에서 누락하지 않는다 |
+| 기본값 변경 전 | M4 명령은 기본값을 적용하지 않는다 | 패치 생성과 적용은 M5 범위다 |
 
-프로토타입은 소유자가 승인한 게이트 하나에서, 빌드와 테스트가 통과하면 튜닝한 기본값을 바로 커밋하게 했다. Shakedown은 이 방식을 소유자가 한 명인 프로젝트용 선택 기능(opt-in)으로만 남기고, 기본값으로 두지 않는다.
+`approve`는 결과물과 설정 내용에 연결된 운영자의 명시적 승인을 기록한다. 캠페인 승인은 승인된 목표에도 연결된다. 영수증은 서명이 없어 승인자 신원을 인증하지 않으며, 내용 변경 시 재승인이 필요하다. 프로토타입의 직접 기본값 변경은 M4에 포함하지 않는다.
+
+### M4 명령과 예산
+
+```text
+shakedown plan {targets,campaign,revise,bug,report} --config PATH --input NAME=PATH --output DIR
+  [--backend mock|claude-cli|codex-cli] [--targets PATH --targets-approval PATH]
+  [--budget-usd N --call-budget-usd N --max-calls N --ledger PATH]
+
+shakedown approve {targets,campaign} --config PATH --artifact PATH --receipt PATH --approved
+  [--targets PATH --targets-approval PATH]
+
+shakedown campaign --config PATH --campaign PATH --approval PATH
+  --targets PATH --targets-approval PATH --output DIR --approved [--max-runs N]
+```
+
+줄바꿈은 명령 문법을 설명하기 위한 것이며 셸의 줄 연결 표시는 아니다. `--input NAME=PATH`는 반복할 수 있다. 필수 입력 이름은 `targets`·`campaign`의 `design_notes`, `revise`·`report`의 `metrics`, `bug`의 `run`이다. 출력은 차례로 `targets.json`, `campaign.json`, `revision.json`, `bug_draft.json`, `report.json`과 `report.md`다. 캠페인 작성과 승인은 목표 및 목표 승인 영수증을 사용한다. `--max-runs`는 기준선 한 라운드를 제한하며 최적화를 켜지 않는다.
+
+`[planner]` 설정 키는 `backend`, `budget_usd`, `call_budget_usd`, `max_calls`, `timeout_s`, `model`, `command`, `codex_mode`, `ledger`다. `codex_mode`는 `disabled` 또는 `restricted`다. 실제 호출의 모델은 명시적으로 선택하며 예제에서 임의의 최신 모델이나 fallback을 지정하지 않는다. `plan`의 예산·원장 옵션은 해당 설정을 호출 단위로 덮어쓴다.
+
+원장은 각 시도 전에 `call_budget_usd`를 예약하고 총 예산과 호출 수를 검사한다. 알려진 비용은 기록하며 알 수 없는 비용에는 예약액 전부를 부과한다. 이것은 공급자 청구액의 엄격한 상한이 아니다. 응답이 비용 상한을 넘긴 뒤 종료될 수 있고, Codex에는 검증된 USD 제한이 없다. 실패·중단에도 미보고 비용이 생길 수 있으며 스키마 재시도에도 같은 회계를 적용한다. [Claude 비용 상한의 여유분](https://code.claude.com/docs/en/agent-sdk/agent-loop)과 [실패 시 비용 기록](https://code.claude.com/docs/en/agent-sdk/cost-tracking)을 참고한다.
 
 ## 5.5 에이전트 스킬
 
-`skill/shakedown/`은 Claude Code나 Codex 같은 코딩 에이전트가 쓸 수 있게 Shakedown을 묶은 패키지다. 스킬을 실행하는 에이전트가 곧 플래너다. 스킬은 에이전트에게 다음을 준다.
+계획된 M6의 `skill/shakedown/`은 Claude Code나 Codex 같은 코딩 에이전트가 쓸 수 있게 Shakedown을 묶는 패키지다. 스킬을 실행하는 에이전트가 곧 플래너이며, 다음 구성을 제공할 예정이다.
 
 | 구성 | 내용 |
 |---|---|
@@ -60,7 +84,7 @@
 
 결정마다 이산 행동을 고르는 게임에는 실행기가 거의 필요 없다. 턴제, 카드, 퍼즐, 메뉴 중심 게임이 여기에 속하며, 후보 하나가 버튼 하나나 API 호출 하나에 대응한다. 이런 게임을 위해 템플릿에는 `candidate → input` 표 하나로 처리하는 "얇은 실행기(thin executor)" 모드가 있다.
 
-## 5.6 전형적인 에이전트 세션
+## 5.6 M6 이후의 에이전트 세션 설계
 
 1. 사용자가 에이전트에게 자기 게임의 플레이테스트를 요청한다.
 2. 에이전트는 게임을 읽고 어댑터를 작성하거나 갱신한다. 그다음 C1~C3이 통과할 때까지 `shakedown check-adapter`를 실행한다.

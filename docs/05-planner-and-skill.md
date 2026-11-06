@@ -4,15 +4,19 @@
 
 ## 5.1 Planner backends
 
-The planner is an LLM called through a command-line tool, never from inside a run.
+The M4 planner runs between gameplay runs. It produces structured drafts through a command-line LLM or the offline `mock` backend. The baseline campaign executor is implemented at M4; the optimizer, iterative balance loop, and default changes remain M5 design.
 
 | Backend | Call | Notes |
 |---|---|---|
-| `claude-cli` | `claude -p --output-format json --json-schema <file> --max-budget-usd <n>` | One call costs about $0.4 in system-prompt cache creation alone (prototype measurement, 2026-10-29). Set the budget with that in mind. |
-| `codex-cli` | `codex exec --output-schema <file> -o <file> -s read-only` | Strict schema mode rejects free-form key maps. Shakedown sends maps as `[{key, value}]` arrays to Codex and converts the answer back. |
+| `claude-cli` | `claude -p --output-format json --json-schema <JSON string> --max-budget-usd <n>` | Read the envelope's `structured_output`, not the text `result`. Disable built-in tools, inherited MCP, and customizations for the subprocess. The provider's cost cap is an estimate checked after responses arrive. |
+| `codex-cli` | `codex exec --output-schema <file> -o <file> -s read-only --json` | Disabled unless `codex_mode = "restricted"` is explicitly configured. Additional tool and configuration restrictions are applied, but read-only sandboxing is not a tool-free guarantee. Token usage does not establish a dollar charge. |
 | `mock` | Fixed JSON derived from the inputs | Runs the whole pipeline with no network. |
 
-Every backend's output is checked against the same JSON Schema. On failure the planner is asked once more. On a second failure the step stops. The planner gets no tool permissions: the orchestrator pastes input files into the prompt.
+Every backend's output is checked against the step's schema and semantic constraints. Invalid schema output permits one retry; a second invalid output stops the step. Each attempt consumes the call and budget allowance. A CLI can also retry internally, so this limit counts Shakedown attempts rather than individual provider requests. The orchestrator pastes input files into the prompt and does not expose Shakedown execution tools to the planner.
+
+Claude's `--tools ""` removes built-in tools; MCP needs a separate empty strict configuration. Codex's restricted mode disables selected capabilities and audits emitted tool-call events, rejecting outputs that used tools. This audit cannot undo an already executed tool call. An empty working directory and ignored user configuration reduce inherited context; they do not certify an operating-system isolation boundary or eliminate managed policy. Never describe the restricted Codex mode as verified tool-free execution.
+
+The CLI contracts were checked against local Codex 0.166.0 and Claude Code 2.1.318 help on 2026-11-06, without a model call. See the official [Codex non-interactive documentation](https://developers.openai.com/codex/noninteractive), [Codex configuration reference](https://developers.openai.com/codex/config-reference), [Claude CLI reference](https://code.claude.com/docs/en/cli-reference), and [Claude structured output documentation](https://code.claude.com/docs/en/headless). Live backend/schema qualification remains a separate manual gate.
 
 ## 5.2 Planner steps
 
@@ -22,11 +26,11 @@ Every backend's output is checked against the same JSON Schema. On failure the p
 | `campaign` | Design notes, tuning key table, approved targets, previous report | `campaign.json`: experiments, hypotheses, instructions per profile, tuning search ranges, batch size |
 | `revise` | `metrics.json`, labels, anomalies | `revision.json`: updated hypotheses, next search ranges inside the key table, stop or continue |
 | `bug` | Run arguments, oracle line, last telemetry events | `bug_draft.json`: title, reproduction command, expected and actual, suspected cause |
-| `report` | All metrics, revisions, holdout results | `report.md` for humans, with proposed default changes in a separate table |
+| `report` | Metrics and available supporting evidence | `report.json` plus `report.md` for humans; proposals do not apply defaults |
 
 Profile instructions are the planner's only influence on play. They are prefixed to the decider's question for every decision in a run, limited to 600 characters per profile, and cannot add candidates or new actions. The schema checks length only, so a human reads `campaign.json` before approving it.
 
-Ranges the planner proposes outside the key table are clipped by the orchestrator, and the clipping is recorded in `revision.json`.
+Proposed ranges must satisfy the configured key-table constraints before the artifact is accepted. M4 records proposals but does not run a numeric search or apply tuned defaults. The future balance loop's clipping and revision behavior belongs to M5.
 
 ## 5.3 What the planner does not decide
 
@@ -39,15 +43,35 @@ Ranges the planner proposes outside the key table are clipped by the orchestrato
 
 | Gate | Default | Why |
 |---|---|---|
-| Before a campaign runs | `campaign.json` must be approved (`--approved`) | Instructions and ranges steer every run |
-| Before spending | Separate budgets for decider and planner (`budget_usd`) | Both bill per call |
-| Before changing the game | Shakedown writes a patch and a report. It never commits. | A balance change is a design decision |
+| Before a campaign runs | Approved targets and campaign receipts, plus `--approved` at execution | Instructions and ranges steer every run |
+| Before planner spending | A budget ledger reserves each call before launch | Failed attempts and unknown charges must not disappear from accounting |
+| Before changing defaults | No M4 command applies defaults | A balance change is a design decision; patch generation and application belong to M5 |
 
-The prototype let one owner-approved gate commit tuned defaults directly after a build and test pass. Shakedown keeps that as an opt-in for single-owner projects, not as the default.
+`approve` records an explicit operator assertion bound to artifact content and configuration. Campaign approval also depends on the approved targets. Receipts are unsigned: they detect stale inputs, but do not authenticate the person approving them. Editing an artifact or relevant configuration requires fresh approval. The prototype's direct-default-change workflow is not part of M4.
+
+### M4 commands
+
+```text
+shakedown plan {targets,campaign,revise,bug,report} --config PATH --input NAME=PATH --output DIR
+  [--backend mock|claude-cli|codex-cli] [--targets PATH --targets-approval PATH]
+  [--budget-usd N --call-budget-usd N --max-calls N --ledger PATH]
+
+shakedown approve {targets,campaign} --config PATH --artifact PATH --receipt PATH --approved
+  [--targets PATH --targets-approval PATH]
+
+shakedown campaign --config PATH --campaign PATH --approval PATH
+  --targets PATH --targets-approval PATH --output DIR --approved [--max-runs N]
+```
+
+The wrapped lines describe command syntax, not shell line continuations. Repeat `--input NAME=PATH` for named evidence files. The required name is `design_notes` for `targets` and `campaign`, `metrics` for `revise` and `report`, and `run` for `bug`. The respective output artifacts are `targets.json`, `campaign.json`, `revision.json`, `bug_draft.json`, and both `report.json` and `report.md`. Campaign drafting and approval use the approved targets and their receipt. `campaign` executes only one baseline round; `--max-runs` bounds that round rather than enabling optimization.
+
+The `[planner]` configuration accepts `backend`, `budget_usd`, `call_budget_usd`, `max_calls`, `timeout_s`, `model`, `command`, `codex_mode`, and `ledger`. `codex_mode` accepts `disabled` or `restricted`. Select the model explicitly for live calls; examples do not pick a provider model or enable model fallback. The plan command's budget and ledger options override the corresponding configured limits for that invocation.
+
+The ledger reserves `call_budget_usd` before each attempt and enforces the total admission budget and maximum call count. Known costs are recorded, and an unknown charge consumes the full reservation. Reservations are not a hard billing cap: a provider can finish a response after reaching its estimated cap, and Codex does not expose a verified USD limit. A failed or interrupted process may have incurred unreported cost. The same accounting applies to the one schema retry. See [Claude budget headroom](https://code.claude.com/docs/en/agent-sdk/agent-loop) and [cost accounting on failures](https://code.claude.com/docs/en/agent-sdk/cost-tracking).
 
 ## 5.5 The agent skill
 
-`skill/shakedown/` packages Shakedown for coding agents such as Claude Code or Codex. The agent running the skill is the planner. The skill gives it:
+The planned M6 `skill/shakedown/` packages Shakedown for coding agents such as Claude Code or Codex. The agent running the skill is the planner. The intended skill gives it:
 
 | Part | Contents |
 |---|---|
@@ -60,7 +84,7 @@ The skill does not ship an executor, because an executor is game-specific code (
 
 Games with discrete actions per decision, such as turn-based, card, puzzle, or menu-driven games, need almost no executor: each candidate maps to one button or API call. For these the templates include a "thin executor" mode that a table of `candidate → input` covers.
 
-## 5.6 Typical agent session
+## 5.6 Intended agent session after M6
 
 1. The user asks the agent to playtest their game.
 2. The agent reads the game, writes or updates the adapter, and runs `shakedown check-adapter` until C1 to C3 pass.
