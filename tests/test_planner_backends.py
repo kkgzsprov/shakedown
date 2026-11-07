@@ -1,3 +1,4 @@
+import errno
 import json
 import os
 from pathlib import Path
@@ -109,6 +110,25 @@ class PlannerBackendTests(unittest.TestCase):
         self.assertIsNone(caught.exception.reported_cost_usd)
         self.assertTrue((self.directory / "transport.json").exists())
         self.assertFalse((self.directory / "transport-output.tmp").exists())
+
+    def test_transient_windows_tmp_lock_still_removes_raw_and_keeps_receipt(self):
+        denied = PermissionError(errno.EACCES, "sharing violation")
+        original_unlink = Path.unlink
+        denied_paths = []
+        def unlinking(path):
+            if path.name == "transport-output.tmp" and not denied_paths:
+                denied_paths.append(path)
+                raise denied
+            return original_unlink(path)
+        with patch("shakedown.planner.backends.os.name", "nt"), \
+                patch("shakedown.planner.backends.Path.unlink", autospec=True, side_effect=unlinking), \
+                patch("shakedown.planner.backends.time.sleep") as sleep:
+            with self.assertRaisesRegex(BackendError, "timed out"):
+                self.call(case="timeout", timeout_s=.2)
+        self.assertEqual(len(denied_paths), 1)
+        sleep.assert_called_with(.01)
+        self.assertFalse((self.directory / "transport-output.tmp").exists())
+        self.assertTrue((self.directory / "transport.json").exists())
 
     def test_secret_is_redacted_in_retained_evidence(self):
         secret = "fixture-secret-key-123456789"

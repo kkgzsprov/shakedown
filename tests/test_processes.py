@@ -9,11 +9,12 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 import tests  # noqa: F401
 from shakedown.bridge import run_bridge
 from shakedown.deciders import make_decider
-from shakedown.processes import ProcessControl, run_process
+from shakedown.processes import ProcessControl, run_process, terminate_process
 
 
 def alive(pid):
@@ -84,6 +85,17 @@ class ProcessTests(unittest.TestCase):
                                   stdout_path=directory / "log", timeout_s=3, control=control)
             self.assertNotEqual(code, 0)
             self.assertFalse((directory / "acted").exists())
+
+    def test_denied_process_group_signal_falls_back_to_killing_the_leader(self):
+        process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        self.addCleanup(process.kill)
+        with patch("shakedown.processes.os.name", "posix"), \
+                patch("shakedown.processes.signal.SIGKILL", 9, create=True), \
+                patch("shakedown.processes.os.killpg",
+                      side_effect=PermissionError(1, "zombie group"), create=True):
+            terminate_process(process)
+        process.wait(timeout=5)
+        self.assertIsNotNone(process.returncode)
 
 
 if __name__ == "__main__":

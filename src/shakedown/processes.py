@@ -105,7 +105,9 @@ def terminate_process(process: subprocess.Popen) -> None:
     else:
         try:
             os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
+            # ESRCH means the group is gone; BSD reports EPERM instead when its
+            # members are all zombies, which means the same thing here.
             pass
     if process.poll() is None:
         try:

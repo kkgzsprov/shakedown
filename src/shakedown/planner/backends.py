@@ -12,12 +12,14 @@ https://code.claude.com/docs/en/cli-reference
 from __future__ import annotations
 
 from dataclasses import dataclass
+import errno
 import json
 import math
 import os
 from pathlib import Path
 import re
 import shutil
+import time
 
 from ..processes import run_process
 
@@ -100,6 +102,20 @@ def _numbers(value) -> dict:
         elif _finite(item) and item >= 0:
             result[key] = item
     return result
+
+
+def _drop(path: Path, timeout_s: float = 1) -> None:
+    """Remove evidence a killed descendant can briefly hold open on Windows."""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        try:
+            path.unlink()
+            return
+        except PermissionError as error:
+            if (os.name != "nt" or error.errno != errno.EACCES
+                    or time.monotonic() >= deadline):
+                raise
+            time.sleep(.01)
 
 
 def _command(name: str, override: list[str] | None) -> list[str]:
@@ -307,7 +323,7 @@ def call_backend(name: str, *, prompt: str, schema: dict, work_dir: Path,
         raise BackendError("planner transport could not read or execute the CLI", metadata=metadata) from error
     finally:
         if raw_path.is_file():
-            raw_path.unlink()
+            _drop(raw_path)
         # Output files can contain provider diagnostics even on an unsuccessful
         # attempt. Retain only redacted evidence, never raw credential strings.
         if output_path.is_file():
