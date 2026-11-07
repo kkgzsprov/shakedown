@@ -56,8 +56,8 @@ The implementation sends this request shape. The model pin below is illustrative
 ```
 
 - Pin an exact model ID, never an alias such as `latest`. When `decider.model` is omitted, Shakedown uses the pinned default `jev-1.13.0`; set `model` to choose another exact version. Record the model ID from each response, and invalidate a campaign whose model changes partway. Mixed versions cannot be compared.
-- Choose by `argmax`; tied maxima use sorted candidate names. Seeded hosted sampling is not implemented.
-- Read the key from the configured environment variable, `TYPESAFE_API_KEY` by default. Key-file loading is not implemented. The runner removes the hosted key from the game's environment. Never write it to configuration, logs, tapes, or exception text.
+- The default selection is `argmax`; tied maxima use sorted candidate names. With `sampling = "seeded"`, each decision draws once from the response probabilities through the run's seeded generator, so the same seed and request sequence replay the same choices. The provider's declared choice must still be a probability maximum.
+- Read the key from the configured environment variable, `TYPESAFE_API_KEY` by default, or from `api_key_file`, which takes precedence when set. The file path is relative to the configuration file and holds only the key. The runner removes the hosted key from the game's environment. Never write it to configuration, logs, tapes, or exception text.
 - Treat `probabilities` as the model's judgment over the candidate descriptions. It is not the probability that the action succeeds. Confidence definitions also differ between models: Jev documents `(pmax − 1/n) / (1 − 1/n)`, while Laya uses `1 − H(p) / log(n)`. Do not reuse a threshold across deciders.
 
 The prototype measured p50 about 210 ms and p95 about 235 ms over four runs, and $0.0005 to $0.0025 per 60 s run (section 1.5). These are historical prototype measurements, not validation of the current backend. Current local HTTP fixtures establish request/response, timeout, retry, cache, and accounting behavior; live inference, production latency, and actual billing remain unmeasured.
@@ -77,11 +77,12 @@ backoff_s = 0.1
 max_elapsed_s = 12
 input_price_per_million = 0.042
 api_key_env = "TYPESAFE_API_KEY"
+sampling = "argmax"
 cache = "cache/jev.sqlite3"
 ledger = "jev-budget.json"
 ```
 
-The endpoint defaults to `https://api.typesafe.ai/v1/systemone`. Overrides require HTTPS; plain HTTP is restricted to loopback test fixtures, and redirects are not followed. `cache` and `ledger` are optional. `input_price_per_million` is a configured input-token tariff estimate, not a verified provider charge or a live price lookup. The output-token count is retained separately.
+The endpoint defaults to `https://api.typesafe.ai/v1/systemone`. Overrides require HTTPS; plain HTTP is restricted to loopback test fixtures, and redirects are not followed. `cache` and `ledger` are optional. `api_key_file` reads the key from a file relative to the configuration file and takes precedence over the environment variable. `sampling` selects `argmax` (the default) or `seeded` probability draws. `input_price_per_million` is a configured input-token tariff estimate, not a verified provider charge or a live price lookup. The output-token count is retained separately.
 
 After supplying an account environment and approved settings, choose the hosted path with either command syntax:
 

@@ -337,6 +337,50 @@ class JevTests(unittest.TestCase):
                 self.runtime()
         self.assertEqual(list(self.root.glob("ledger-*.json")), [])
 
+    def test_seeded_sampling_draws_from_probabilities_deterministically(self):
+        value = response()
+        value["answers"]["tactic"].update(
+            choice="hold", probabilities={"advance": .4, "hold": .5, "reload": .1})
+        self.server.responses += [{"body": value}] * 4
+        seeded = self.runtime(sampling="seeded")
+        argmax = self.runtime()
+        first = self.decider(seeded)
+        self.assertEqual(first.decide(request(), "").choice, "advance")
+        self.assertEqual(self.decider(argmax).decide(request(2), "").choice, "hold")
+        self.assertEqual(first.decide(request(3), "").choice, "advance")
+        again = self.decider(seeded, "again")
+        self.assertEqual(again.decide(request(4), "").choice, "advance")
+        self.assertEqual(seeded.summary()["sampling"], "seeded")
+        self.assertEqual(argmax.summary()["sampling"], "argmax")
+
+    def test_sampling_setting_is_validated_before_any_ledger(self):
+        with self.assertRaisesRegex(ValueError, "sampling"):
+            self.runtime(sampling="weighted")
+        self.assertEqual(list(self.root.glob("ledger-*.json")), [])
+
+    def test_api_key_file_loads_and_precedes_the_environment(self):
+        key_file = self.root / "jev.key"
+        key_file.write_text("fixture-file-secret\n", encoding="utf-8")
+        runtime = self.runtime(api_key_file=str(key_file))
+        self.decider(runtime).decide(request(), "")
+        self.assertEqual(self.server.requests[0]["auth"], "Bearer fixture-file-secret")
+        self.assertNotIn("fixture-file-secret", json.dumps(runtime.summary()))
+
+    def test_api_key_file_errors_are_preflight(self):
+        with self.assertRaisesRegex(ValueError, "unreadable"):
+            self.runtime(api_key_file=str(self.root / "absent.key"))
+        spaced = self.root / "spaced.key"
+        spaced.write_text("fixture secret\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "missing or invalid"):
+            self.runtime(api_key_file=str(spaced))
+        empty = self.root / "empty.key"
+        empty.write_text("\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "missing or invalid"):
+            self.runtime(api_key_file=str(empty))
+        with self.assertRaisesRegex(ValueError, "key file path"):
+            self.runtime(api_key_file=123)
+        self.assertEqual(list(self.root.glob("ledger-*.json")), [])
+
     def test_shared_runtime_is_thread_safe(self):
         runtime = self.runtime(cache=self.root / "cache.sqlite")
         deciders = [self.decider(runtime, str(index)) for index in range(4)]

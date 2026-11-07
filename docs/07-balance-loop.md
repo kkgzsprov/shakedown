@@ -2,7 +2,7 @@
 
 # 7. Balance loop
 
-The M5 balance loop produces evidence for a human design decision. `campaign --optimize` searches tuning values against human-approved target ranges and proposes a change only after it holds up on seeds the search never saw. Without `--optimize`, `campaign` retains the M4 single baseline round. Neither mode applies defaults.
+The M5 balance loop produces evidence for a human design decision. `campaign --optimize` searches tuning values against human-approved target ranges and proposes a change only after it holds up on seeds the search never saw. Without `--optimize`, `campaign` retains the M4 single baseline round. Neither mode applies defaults on its own; `shakedown apply` writes a reviewed proposal to the key table, and only under `--approved`.
 
 ## 7.1 Tuning key table
 
@@ -37,7 +37,7 @@ Choose keys the game actually reads at the point that matters. In the prototype,
 3. The orchestrator measures the documented baseline, then samples candidates with standard-library random or lazy grid search. Every experiment must use the campaign's global `search_ranges`. It takes the first `batch_size` search seeds from each experiment and merges duplicate profile/map scopes without duplicating their seeds. Every scope needs at least `min_runs` unique seeds.
 4. Each round aggregates metrics and anomaly signals. The default is a fixed schedule using the approved campaign's `rounds`. With `planner_revisions = true`, the configured planner can stop or revise numeric ranges. Revisions are clipped to the approved search box and logged; they cannot introduce keys or change policy instructions. Human/model labeling is not supplied automatically.
 5. Search metrics rank the candidates. `selection.json` freezes the top `top_k` measured improvements before any holdout run. Only then do the baseline and those candidates run once on the reserved holdout set. If search has no measured improvement, the holdout set remains unused.
-6. The deterministic gate (section 7.4) controls patch output. `report.md` records the campaign evidence, and `planner-report/` contains a supplemental planner draft. A human decides whether to apply a proposal.
+6. The deterministic gate (section 7.4) controls patch output. `report.md` records the campaign evidence, and `planner-report/` contains a supplemental planner draft. A human decides whether to apply a proposal with `apply` (section 7.4).
 
 Add a `[balance]` table before approving targets and the campaign. This example uses seeds outside the bundled configuration's search set; choose a fresh holdout set for your own experiment:
 
@@ -90,7 +90,9 @@ A candidate becomes a proposed change only if all of these hold on holdout seeds
 - Every baseline/candidate group has at least `min_runs` valid runs, and every target metric has at least that many measured observations. Missing, duplicate, censored, nonfinite, or insufficient evidence stays `unmeasured`; invalid executions block the proposal.
 - At least two named policies have measured scores and no observed preference reversal.
 
-A passing candidate writes `proposals/pNNN/defaults.patch`, `tuning.json`, and `proposal.json`. The receipt includes the source hash, numeric default changes, and gate details with scores and per-target values. The patch targets the documented key table; the source file stays unchanged. Bootstrap intervals are descriptive evidence, not a statistical guarantee of gain. Automatic application, build/test/rollback, and committing defaults are future design and are not implemented commands.
+A passing candidate writes `proposals/pNNN/defaults.patch`, `tuning.json`, and `proposal.json`. The receipt includes the source hash, numeric default changes, and gate details with scores and per-target values. The patch targets the documented key table; the source file stays unchanged. Bootstrap intervals are descriptive evidence, not a statistical guarantee of gain.
+
+`shakedown apply --config CONFIG --proposal PROPOSAL_DIR` verifies a proposal without writing: the receipt must be unapplied and from a passed gate, the values must match the gated candidate, the live table must be the configured `tuning.keys` file with the recorded source hash, and the patch must reproduce byte-for-byte from the table and values. With `--approved` it then writes the new defaults and marks the receipt `applied` with before/after hashes, so the same proposal cannot be applied twice. Rejected verification exits nonzero before any write. Build/test/rollback and committing the table remain operator steps, not implemented commands.
 
 ## 7.5 What the targets should not be
 

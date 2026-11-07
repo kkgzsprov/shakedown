@@ -4,7 +4,7 @@
 
 ## 2.1 Process model
 
-The diagram is the full design. M0–M3 supply the game/adapter, offline deciders, bridge, replay, isolated batches, aggregation, conformance checks, and the QA path. M4 supplies between-run planner drafts and approval/budget accounting. M5 supplies numeric search, frozen holdout selection, and proposal patches. M6 supplies the agent skill and a second thin-executor example; M7 supplies the optional Jev HTTP backend. Live provider, broader unseen-game, and human-play qualification remain separate gaps. Automatic default application remains unimplemented.
+The diagram is the full design. M0–M3 supply the game/adapter, offline deciders, bridge, replay, isolated batches, aggregation, conformance checks, and the QA path. M4 supplies between-run planner drafts and approval/budget accounting. M5 supplies numeric search, frozen holdout selection, and proposal patches. M6 supplies the agent skill and a second thin-executor example; M7 supplies the optional Jev HTTP backend. Live provider, broader unseen-game, and human-play qualification remain separate gaps. The `apply` command writes reviewed defaults under explicit approval; committing them stays an operator step.
 
 ```text
  human: approves goals, campaigns, and any default change

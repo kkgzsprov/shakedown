@@ -27,7 +27,7 @@ Shakedown is an AI playtest pipeline for games. It has an offline test path.
 > - Generalization to more games that the adapter writer did not see before
 > - Validation with human players
 >
-> No command applies or commits the proposed defaults. For more data, refer to [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
+> The `apply` command writes proposed defaults only under `--approved`. No command commits them. For more data, refer to [the design documents](docs/README.md) and [the roadmap](docs/09-roadmap.md).
 
 ## How it works
 
@@ -347,11 +347,11 @@ The balance loop has these rules:
 
 [Chapter 7](docs/07-balance-loop.md) gives the settings, the gate, and the output files.
 
-The candidates that pass make `defaults.patch`, `tuning.json`, and `proposal.json`. No command applies or commits these files.
+The candidates that pass make `defaults.patch`, `tuning.json`, and `proposal.json`. `shakedown apply --config CONFIG --proposal PROPOSAL_DIR` verifies the receipt and patch against the live table; `--approved` then writes the new defaults. No command commits them.
 
 - The patch changes the documented defaults in the tuning key table.
 - Tinyraid reads this table as its source of runtime defaults.
-- Other adapters must have their own integration before a person applies a patch.
+- Other adapters must have their own integration before a person applies a proposal.
 
 ### Planner budgets
 

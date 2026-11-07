@@ -4,7 +4,7 @@
 
 ## 5.1 Planner backends
 
-The M4 planner runs between gameplay runs. It produces structured drafts through a command-line LLM or the offline `mock` backend. M5 adds bounded numeric search and held-out proposal evaluation through `campaign --optimize`; automatic default application remains unimplemented.
+The M4 planner runs between gameplay runs. It produces structured drafts through a command-line LLM or the offline `mock` backend. M5 adds bounded numeric search and held-out proposal evaluation through `campaign --optimize`; `apply` writes a reviewed proposal under explicit approval.
 
 | Backend | Call | Notes |
 |---|---|---|

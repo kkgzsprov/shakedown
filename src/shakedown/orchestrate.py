@@ -47,6 +47,8 @@ def hosted_runtime(config: ProjectConfig, ledger_path: Path, workers: int):
     """Create one shared budget/cache/rate limiter for a hosted batch/campaign."""
     from .deciders.jev import JevRuntime
     settings = dict(config.raw.get("decider", {}))
+    if "api_key_file" in settings:
+        settings["api_key_file"] = str((config.path.parent / settings["api_key_file"]).resolve())
     if "cache" in settings:
         settings["cache"] = (config.path.parent / settings["cache"]).resolve()
     if "ledger" in settings:

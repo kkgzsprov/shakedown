@@ -27,7 +27,7 @@ Shakedown은 게임용 AI 플레이테스트 파이프라인이다. 오프라인
 > - 어댑터 작성자가 처음 보는 게임으로의 일반화
 > - 사람 플레이어를 통한 검증
 >
-> 어떤 명령도 제안 기본값을 적용하거나 커밋하지 않는다. 자세한 내용은 [설계 문서](docs/ko/README.md)와 [로드맵](docs/ko/09-roadmap.md)을 참고한다.
+> `apply` 명령은 `--approved`에서만 제안 기본값을 쓰며, 어떤 명령도 커밋하지 않는다. 자세한 내용은 [설계 문서](docs/ko/README.md)와 [로드맵](docs/ko/09-roadmap.md)을 참고한다.
 
 ## 동작 방식
 
@@ -347,7 +347,7 @@ M4는 명령 3개를 추가한다. `plan`, `approve`, `campaign`이다.
 
 [7장](docs/ko/07-balance-loop.md)에 설정, 게이트, 출력 파일이 있다.
 
-통과한 후보는 `defaults.patch`, `tuning.json`, `proposal.json`을 만든다. 어떤 명령도 이 파일을 적용하거나 커밋하지 않는다.
+통과한 후보는 `defaults.patch`, `tuning.json`, `proposal.json`을 만든다. `shakedown apply --config CONFIG --proposal PROPOSAL_DIR`는 영수증과 패치를 현재 표와 대조해 검증하고, `--approved`에서 새 기본값을 쓴다. 어떤 명령도 커밋하지 않는다.
 
 - 패치는 튜닝 키 테이블의 문서화된 기본값을 바꾼다.
 - tinyraid는 이 테이블을 런타임 기본값의 원본으로 읽는다.

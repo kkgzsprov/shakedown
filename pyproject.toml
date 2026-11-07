@@ -5,13 +5,32 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "shakedown"
 version = "0.0.1"
+description = "AI playtest pipeline for games: replayable bot runs, QA triage, and holdout-gated balance proposals"
+readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
+authors = [{name = "kkgzsprov"}]
+keywords = ["game-testing", "playtest", "game-balance", "agents", "deterministic-replay"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = []
 
 [project.scripts]
 shakedown = "shakedown.cli:main"
+
+[project.urls]
+Repository = "https://github.com/kkgzsprov/shakedown"
+Issues = "https://github.com/kkgzsprov/shakedown/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

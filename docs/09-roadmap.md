@@ -19,7 +19,7 @@ Current implementation: M0–M7 paths. M4 adds structured planning, approval, an
 | M6 Skill | Implemented `skill/shakedown/`, transport skeletons, adapter guides, wrapper, and Switchyard thin-executor example | Shipped-adapter conformance and a separate fresh-context independent adapter are distinct evidence. The trial met C1–C3 (also C4–C6) on seed 7/depot/courier; C7 was unmeasured. Broader unseen-game generalization remains unproven. |
 | M7 Hosted decider | Implemented pinned `jev` HTTP backend, shared cache/budget/concurrency, bounded retries, and invalid-run receipts | Local HTTP fixtures verify the transport path; live inference, production latency, actual charge, and model-value comparisons remain unmeasured. |
 
-M4 can be validated with mock metrics and subprocess fixtures without a paid service. Its real CLI backend qualification is a separate manual gate with an explicit call budget. M5 compares only its named offline policies; this does not establish agreement with hosted models or human play. M7's token estimates and reservation ledger do not establish the provider's actual bill. No implemented command automatically applies or commits proposed defaults.
+M4 can be validated with mock metrics and subprocess fixtures without a paid service. Its real CLI backend qualification is a separate manual gate with an explicit call budget. M5 compares only its named offline policies; this does not establish agreement with hosted models or human play. M7's token estimates and reservation ledger do not establish the provider's actual bill. The `apply` command writes proposed defaults after re-verification; no command commits them.
 
 ## 9.2 Experiments before a 1.0 release
 

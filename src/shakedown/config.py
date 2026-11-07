@@ -210,8 +210,8 @@ def load_config(path: str | Path) -> ProjectConfig:
         "seeds", "deciders", "seconds", "workers", "wall_timeout_s", "bootstrap_samples", "bootstrap_seed"})
     decider = _table(raw.get("decider", {}), "decider", {
         "backend", "budget_usd", "instructions", "model", "endpoint", "api_key_env",
-        "call_budget_usd", "max_calls", "timeout_s", "retries", "backoff_s", "max_elapsed_s",
-        "input_price_per_million", "cache", "ledger"})
+        "api_key_file", "sampling", "call_budget_usd", "max_calls", "timeout_s", "retries",
+        "backoff_s", "max_elapsed_s", "input_price_per_million", "cache", "ledger"})
     tuning = _table(raw.get("tuning", {}), "tuning", {"keys", "candidates"})
     checks = _table(raw.get("checks", {}), "checks", {
         "oracle_args", "oracle_seconds", "oracle_kind", "visibility_command"})
@@ -278,9 +278,11 @@ def load_config(path: str | Path) -> ProjectConfig:
     _integer(decider.get("max_calls", 1000), "decider.max_calls", 1)
     if not 0 <= _integer(decider.get("retries", 2), "decider.retries", 0) <= 2:
         raise ValueError("decider.retries must be zero, one or two")
-    for key in ("model", "endpoint", "api_key_env", "cache", "ledger"):
+    for key in ("model", "endpoint", "api_key_env", "api_key_file", "cache", "ledger"):
         if key in decider and (type(decider[key]) is not str or not decider[key] or "\x00" in decider[key]):
             raise ValueError(f"decider.{key} must be a nonempty string")
+    if decider.get("sampling", "argmax") not in {"argmax", "seeded"}:
+        raise ValueError("decider.sampling must be argmax or seeded")
     _number(planner.get("budget_usd", 0), "planner.budget_usd")
     _number(planner.get("call_budget_usd", .5), "planner.call_budget_usd", strict=True)
     _integer(planner.get("max_calls", 10), "planner.max_calls", 1)

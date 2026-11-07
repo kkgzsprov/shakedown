@@ -134,8 +134,13 @@ def main(argv: list[str] | None = None) -> int:
     campaign.add_argument("--approved", action="store_true")
     campaign.add_argument("--max-runs", type=int, default=1000)
     campaign.add_argument("--optimize", action="store_true", help="search and evaluate frozen holdout candidates using [balance]")
+    apply_defaults = subparsers.add_parser("apply", help="verify and apply a reviewed defaults proposal")
+    apply_defaults.add_argument("--config", type=Path, default=Path("shakedown.toml"))
+    apply_defaults.add_argument("--proposal", type=Path, required=True)
+    apply_defaults.add_argument("--approved", action="store_true",
+                                help="write the proposed defaults; without it, verify only")
     args = parser.parse_args(argv)
-    if args.command in {"plan", "approve", "campaign"}:
+    if args.command in {"plan", "approve", "campaign", "apply"}:
         from .config import load_config
         from .planner.engine import approve_plan, run_step
         try:
@@ -154,6 +159,9 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "approve":
                 result = approve_plan(config, args.kind, args.artifact, args.receipt,
                     approved=args.approved, targets=args.targets, targets_approval=args.targets_approval)
+            elif args.command == "apply":
+                from .apply import apply_proposal
+                result = apply_proposal(config, args.proposal, approved=args.approved)
             else:
                 if args.optimize:
                     from .campaign import run_balance_campaign as execute_campaign
@@ -165,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(result, ensure_ascii=False, allow_nan=False))
             if result.get("status") == "interrupted":
                 return 130
-            return 0 if result.get("status", "passed") in {"passed", "completed"} else 1
+            return 0 if result.get("status", "passed") in {"passed", "completed", "applied", "verified"} else 1
         except (OSError, ValueError) as error:
             parser.error(str(error))
     if args.command == "bench":

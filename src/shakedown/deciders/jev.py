@@ -17,6 +17,7 @@ import json
 import math
 import os
 from pathlib import Path
+import random
 import re
 import socket
 import sqlite3
@@ -142,9 +143,21 @@ class JevRuntime:
         key_env = settings.get("api_key_env", "TYPESAFE_API_KEY")
         if type(key_env) is not str or not key_env or "\x00" in key_env:
             raise ValueError("invalid Jev API key environment name")
-        self._key = os.environ.get(key_env)
+        key_file = settings.get("api_key_file")
+        if key_file is not None:
+            if type(key_file) is not str or not key_file or "\x00" in key_file:
+                raise ValueError("invalid Jev API key file path")
+            try:
+                self._key = Path(key_file).read_bytes().decode("utf-8").strip()
+            except (OSError, UnicodeError):
+                raise ValueError("Jev API key file is unreadable or invalid") from None
+        else:
+            self._key = os.environ.get(key_env)
         if not self._key or any(ord(character) < 33 or ord(character) > 126 for character in self._key):
-            raise ValueError("Jev API key environment variable is missing or invalid")
+            raise ValueError("Jev API key is missing or invalid")
+        self.sampling = settings.get("sampling", "argmax")
+        if self.sampling not in {"argmax", "seeded"}:
+            raise ValueError("Jev sampling must be argmax or seeded")
         self.call_budget = _number(settings.get("call_budget_usd", .001), "call budget")
         total = _number(settings.get("budget_usd", 0), "total budget")
         self.timeout = _number(settings.get("timeout_s", 3), "timeout")
@@ -227,6 +240,7 @@ class JevRuntime:
         known = sum(row["known_estimated_cost_usd"] for row in summaries)
         observed = sorted({model for row in summaries for model in row["observed_models"]})
         return {"model": self.model, "requested_model": self.model, "models": observed,
+                "sampling": self.sampling,
                 "http_attempts": attempts, "cache_hits": sum(row["cache_hits"] for row in summaries),
                 "cost_usd": None if attempts else 0., "estimated_cost_usd": known if complete else None,
                 "known_estimated_cost_usd": known, "usage_complete": complete,
@@ -243,6 +257,7 @@ class JevDecider:
         self.runtime = runtime
         self._reservation = reservation
         self._fallback = RandomDecider(seed)
+        self._sampler = random.Random(seed)
         self._closed = False
         self._lock = threading.Lock()
         self._attempts = self._hits = 0
@@ -296,6 +311,18 @@ class JevDecider:
             self._fatal("Jev response choice is not a probability maximum")
         return choice, dict(probabilities)
 
+    def _select(self, choice, names, probabilities):
+        """Return the argmax choice, or one seeded draw per decision in seeded mode."""
+        if self.runtime.sampling != "seeded":
+            return choice
+        draw = self._sampler.random()
+        cumulative = 0.
+        for name in names:
+            cumulative += probabilities[name]
+            if draw < cumulative:
+                return name
+        return names[-1]
+
     @staticmethod
     def _retry_delay(headers, default):
         try:
@@ -329,6 +356,7 @@ class JevDecider:
         cached = self.runtime._cached(identity)
         if cached is not None:
             choice, probabilities = self._answer(cached, names)
+            choice = self._select(choice, names, probabilities)
             with self._lock:
                 self._hits += 1
                 self._observed = True
@@ -389,6 +417,7 @@ class JevDecider:
                         self._fatal("Jev response has an invalid envelope")
                     value = {"model": envelope.get("model"), "answer": envelope["answers"].get("tactic")}
                     choice, probabilities = self._answer(value, names)
+                    choice = self._select(choice, names, probabilities)
                     usage = envelope.get("usage")
                     valid_usage = (type(usage) is dict and all(type(usage.get(name)) is int and 0 <= usage[name] <= 2 ** 63 - 1
                                    for name in ("input_tokens", "output_tokens")))

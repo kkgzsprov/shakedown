@@ -1,4 +1,4 @@
-"""Reviewable patches to documented defaults; never apply or commit them."""
+"""Reviewable patches to documented defaults; `apply` writes them, nothing commits them."""
 
 from __future__ import annotations
 
@@ -12,6 +12,33 @@ from .config import _tuning_value
 from .optimize import defaults
 from .orchestrate import digest, write_json
 from .planner.engine import read_json
+
+
+def _rebuild(document, candidate):
+    """Rebuild the proposed table and change list from complete candidate values."""
+    changed = deepcopy(document)
+    changes = []
+    if set(candidate) != set(document["keys"]):
+        raise ValueError("proposal must contain the complete documented tuning values")
+    for key, value in sorted(candidate.items()):
+        spec = document["keys"][key]
+        _tuning_value(key, value, spec)
+        field = "default" if "default" in spec else "baseline"
+        before = spec[field]
+        if value != before:
+            changes.append({"key": key, "field": field, "before": before, "after": value})
+            changed["keys"][key][field] = value
+    if not changes:
+        raise ValueError("proposal does not change documented defaults")
+    replacement = json.dumps(changed, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
+    return changes, replacement
+
+
+def _unified(original: str, replacement: str, relative: str) -> str:
+    return "".join(line if line.endswith("\n") else line + "\n\\ No newline at end of file\n"
+                   for line in difflib.unified_diff(original.splitlines(keepends=True),
+                   replacement.splitlines(keepends=True), fromfile=f"a/{relative}",
+                   tofile=f"b/{relative}"))
 
 
 def write_proposal(config, candidate, output_dir, *, gate, source_sha256):
@@ -28,31 +55,15 @@ def write_proposal(config, candidate, output_dir, *, gate, source_sha256):
     if (gate.get("candidate_hash") != digest(candidate)
             or gate.get("baseline_hash") != digest(defaults(document))):
         raise ValueError("holdout gate does not match the candidate and documented baseline")
-    changed = deepcopy(document)
-    changes = []
-    if set(candidate) != set(document["keys"]):
-        raise ValueError("proposal must contain the complete documented tuning values")
-    for key, value in sorted(candidate.items()):
-        spec = document["keys"][key]
-        _tuning_value(key, value, spec)
-        field = "default" if "default" in spec else "baseline"
-        before = spec[field]
-        if value != before:
-            changes.append({"key": key, "field": field, "before": before, "after": value})
-            changed["keys"][key][field] = value
-    if not changes:
-        raise ValueError("proposal does not change documented defaults")
-    replacement = json.dumps(changed, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
+    changes, replacement = _rebuild(document, candidate)
     relative = source.relative_to(config.root).as_posix()
-    patch = "".join(line if line.endswith("\n") else line + "\n\\ No newline at end of file\n"
-                    for line in difflib.unified_diff(original.splitlines(keepends=True),
-                    replacement.splitlines(keepends=True), fromfile=f"a/{relative}", tofile=f"b/{relative}"))
+    patch = _unified(original, replacement, relative)
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=False)
     write_json(output_dir / "tuning.json", {"tuning_version": 1, "values": candidate})
     (output_dir / "defaults.patch").write_text(patch, encoding="utf-8", newline="\n")
     receipt = {"v": 1, "status": "proposed", "applied": False, "source": relative,
                "source_sha256": source_sha256, "changes": changes, "gate": gate,
-               "scope": "documented defaults; verify the game's integration before manual application"}
+               "scope": "documented defaults; verify the game's integration before application"}
     write_json(output_dir / "proposal.json", receipt)
     return receipt
