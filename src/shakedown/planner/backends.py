@@ -12,7 +12,6 @@ https://code.claude.com/docs/en/cli-reference
 from __future__ import annotations
 
 from dataclasses import dataclass
-import errno
 import json
 import math
 import os
@@ -112,8 +111,7 @@ def _drop(path: Path, timeout_s: float = 1) -> None:
             path.unlink()
             return
         except PermissionError as error:
-            if (os.name != "nt" or error.errno != errno.EACCES
-                    or time.monotonic() >= deadline):
+            if getattr(error, "winerror", None) != 32 or time.monotonic() >= deadline:
                 raise
             time.sleep(.01)
 

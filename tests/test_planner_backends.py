@@ -113,6 +113,7 @@ class PlannerBackendTests(unittest.TestCase):
 
     def test_transient_windows_tmp_lock_still_removes_raw_and_keeps_receipt(self):
         denied = PermissionError(errno.EACCES, "sharing violation")
+        denied.winerror = 32
         original_unlink = Path.unlink
         denied_paths = []
         def unlinking(path):
@@ -120,8 +121,7 @@ class PlannerBackendTests(unittest.TestCase):
                 denied_paths.append(path)
                 raise denied
             return original_unlink(path)
-        with patch("shakedown.planner.backends.os.name", "nt"), \
-                patch("shakedown.planner.backends.Path.unlink", autospec=True, side_effect=unlinking), \
+        with patch("shakedown.planner.backends.Path.unlink", autospec=True, side_effect=unlinking), \
                 patch("shakedown.planner.backends.time.sleep") as sleep:
             with self.assertRaisesRegex(BackendError, "timed out"):
                 self.call(case="timeout", timeout_s=.2)
